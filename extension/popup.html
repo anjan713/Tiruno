@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tiruno Companion</title>
+    <style>
+      :root { --orange:#FF7A1A; --press:#E8650A; --blue:#3DA5F4; --bg:#FFF8F0; --surface:#fff; --text:#2B2320; --muted:#8A7E76; --border:#F0E2D4; }
+      * { box-sizing: border-box; }
+      body { width: 340px; margin: 0; font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+      header { display:flex; align-items:center; gap:8px; padding:14px 16px; border-bottom:1px solid var(--border); }
+      header .logo { font-weight:800; font-size:18px; color: var(--orange); }
+      .body { padding: 14px 16px; }
+      .label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color: var(--muted); margin-bottom:6px; }
+      .page { background: var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:12px; }
+      .page .title { font-weight:700; font-size:14px; line-height:1.3; max-height:2.6em; overflow:hidden; }
+      .page .url { font-size:11px; color: var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+      button { width:100%; border:none; border-radius:12px; padding:11px; font-weight:800; font-size:14px; cursor:pointer; color:#fff; background: var(--orange); box-shadow: 0 3px 0 var(--press); transition: transform .08s; }
+      button:active { transform: translateY(3px); box-shadow:none; }
+      button.secondary { background: var(--blue); box-shadow: 0 3px 0 #2b86cf; }
+      button:disabled { opacity:.5; cursor: default; }
+      .status { margin-top:10px; font-size:13px; font-weight:600; min-height:18px; }
+      .status.ok { color:#3a9d57; } .status.err { color:#d4493f; } .status.info { color: var(--orange); }
+      .section { margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
+      .hint { font-size:11px; color: var(--muted); margin-top:8px; }
+      .settings { margin-top:14px; padding-top:12px; border-top:1px dashed var(--border); }
+      .settings input { width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:10px; font-size:12px; }
+      a { color: var(--orange); font-size:12px; text-decoration:none; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="logo">◆ Tiruno</span>
+      <span style="font-size:12px;color:var(--muted)">Companion</span>
+    </header>
+    <div class="body">
+      <div class="label">Current page</div>
+      <div class="page">
+        <div class="title" id="pageTitle">…</div>
+        <div class="url" id="pageUrl">…</div>
+      </div>
+      <button id="bookmarkBtn">＋ Bookmark to Tiruno</button>
+      <div class="status" id="status"></div>
+      <div class="hint">Tiru summarises it and reads it aloud in <b>My Articles</b>.</div>
+
+      <div class="section" id="canvasSection" style="display:none">
+        <div class="label">Canvas detected</div>
+        <button class="secondary" id="canvasBtn">⟳ Sync Canvas courses</button>
+        <div class="status" id="canvasStatus"></div>
+        <div class="hint">Relays your course list to Tiruno (required for Canvas sync).</div>
+      </div>
+
+      <div class="settings">
+        <div class="label">Tiruno URL</div>
+        <input id="tirunoUrl" placeholder="http://localhost:3002" />
+        <a id="openApp" href="#" target="_blank">Open My Articles ↗</a>
+      </div>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

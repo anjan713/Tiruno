@@ -1,0 +1,28 @@
+# OS
+.DS_Store
+**/.DS_Store
+
+# Secrets / env
+.env
+.env.local
+.env*.local
+
+# Prep material & assets — not for GitHub
+docs/
+idea.md
+mascot-generation/
+generated/
+resource*/
+
+# Local build progress log — not for GitHub
+BUILD_LOG.md
+
+# Node / build (future app)
+node_modules/
+.next/
+dist/
+build/
+
+# Vendored external skill (cloned, not for our repo) + local agent config
+vendor/
+.claude/

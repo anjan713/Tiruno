@@ -51,8 +51,7 @@ export default function LoginPage() {
         style={{ backgroundImage: "url(/art/bg/bg_onboarding.webp)" }}
       />
       <div className="relative mx-auto flex min-h-screen max-w-lg flex-col items-center justify-center px-6 py-12">
-        <div className="mb-1 font-display text-3xl font-extrabold text-primary">◆ Tiruno</div>
-        <p className="mb-6 text-muted">Choose a demo profile to continue</p>
+        <div className="mb-6 font-display text-3xl font-extrabold text-primary">◆ Tiruno</div>
 
         {/* Top bar: switch Student / Professional */}
         <div className="mb-8 flex w-full max-w-xs rounded-chip bg-surface-alt p-1">

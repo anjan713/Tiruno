@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Mascot } from "@/components/mascot/Mascot";
 import { useMascot } from "@/components/mascot/MascotProvider";
 import { speak, stopSpeaking } from "@/lib/voice/voice";
@@ -302,19 +304,19 @@ export default function ExplorePage() {
   };
 
   return (
-    <div className="pb-16">
-      <header className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <p className="font-display text-sm font-bold uppercase tracking-wide text-secondary">Ask Tiru to research</p>
-          <h1 className="flex items-center gap-2 font-display text-display text-text">
-            <Compass className="h-8 w-8 text-primary" /> Explore
-          </h1>
-          <p className="text-muted">
+    <div>
+      <PageHeader
+        accent="secondary"
+        eyebrow="Ask Tiru to research"
+        icon={<Compass className="h-8 w-8 text-primary" />}
+        title="Explore"
+        subtitle={
+          <>
             Type any topic — Tiru researches the <strong>last 30 days</strong> across Reddit, X, YouTube, HN, GitHub &amp; the web.
-          </p>
-        </div>
-        <Mascot state={speaking ? "talking" : researching ? "thinking" : "idle"} size={84} float lean />
-      </header>
+          </>
+        }
+        mascot={speaking ? "talking" : researching ? "thinking" : "idle"}
+      />
 
       {/* Search box */}
       <div className="card mb-4 p-4">
@@ -513,10 +515,10 @@ export default function ExplorePage() {
 
       {/* Empty / first run */}
       {status === "idle" && (
-        <div className="card flex items-center gap-3 p-5 text-muted">
-          <Mascot state="empty" size={64} />
-          <p>Ask Tiru anything you want to get current on — pick a suggestion above or type your own topic.</p>
-        </div>
+        <EmptyState
+          title="What do you want to get current on?"
+          description="Pick a suggestion above or type any topic — Tiru will research the last 30 days for you."
+        />
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 # Tiruno
 
 A playful, **mascot-led** learning app (Duolingo-style) starring **Tiru** the brown bear.
-Desktop-first three-pane shell, gamified units (XP · streak · hearts · Skill Score),
+Responsive shell (three-pane on desktop · bottom tab nav on mobile), gamified units (XP · streak · hearts · Skill Score),
 a full mascot animation system, and sound. **Mock data first** — the experience is the product.
 
 > Built per the planning docs in `docs/` (gitignored). This README covers the running app.
@@ -46,7 +46,7 @@ Re-generate the optimized copies with `cwebp`/`ffmpeg`/`sips` (see `docs/mascot-
 
 ## Accessibility & polish
 - WCAG-minded contrast in both themes, visible focus rings, full keyboard lesson play.
-- `prefers-reduced-motion` freezes clips/confetti to static poses; global **sound mute** in the left nav.
+- `prefers-reduced-motion` freezes clips/confetti to static poses; global **sound mute** in the left nav (top bar on mobile, where the left nav is hidden).
 - 3D pressable buttons, spring pops, XP/ring count-ups, streak flame, confetti on completion.
 
 ## Status

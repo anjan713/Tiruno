@@ -60,8 +60,8 @@ export default function LearnPage() {
   let idx = -1;
 
   return (
-    <div className="pb-24">
-      <header className="mb-8">
+    <div>
+      <header className="mb-8 animate-fade-in">
         <p className="font-display text-sm font-bold uppercase tracking-wide text-primary">Your path</p>
         <h1 className="font-display text-display text-text">Welcome back, {name}</h1>
         <p className="text-muted">Hop along the trail — Tiru is waiting at your next stop.</p>

@@ -37,8 +37,8 @@ export default function ProfilePage() {
   const levelProgress = Math.max(0, Math.min(1, (xp - levelFloor) / (levelCeil - levelFloor)));
 
   return (
-    <div className="pb-16">
-      <header className="mb-6 flex items-center gap-4">
+    <div>
+      <header className="mb-6 flex items-center gap-4 animate-fade-in">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/mascot/poses/happy.webp" alt="You" className="h-16 w-16 rounded-2xl bg-surface-alt object-contain p-1" />
         <div>
@@ -50,10 +50,10 @@ export default function ProfilePage() {
 
       {/* Stat cards */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat icon={<Zap className="h-5 w-5 text-amber" />} value={xp} label="Total XP" />
-        <Stat icon={<Flame className="h-5 w-5 text-amber" />} value={streak} label="Day streak" />
-        <Stat icon={<Target className="h-5 w-5 text-secondary" />} value="84%" label="Accuracy" />
-        <Stat icon={<CheckCircle2 className="h-5 w-5 text-success" />} value={completedNodes.length} label="Units done" />
+        <Stat icon={<Zap className="h-5 w-5 text-amber" />} value={xp} label="Total XP" index={0} />
+        <Stat icon={<Flame className="h-5 w-5 text-amber" />} value={streak} label="Day streak" index={1} />
+        <Stat icon={<Target className="h-5 w-5 text-secondary" />} value="84%" label="Accuracy" index={2} />
+        <Stat icon={<CheckCircle2 className="h-5 w-5 text-success" />} value={completedNodes.length} label="Units done" index={3} />
       </div>
 
       {/* Level + hearts */}
@@ -124,9 +124,12 @@ export default function ProfilePage() {
   );
 }
 
-function Stat({ icon, value, label }: { icon: React.ReactNode; value: React.ReactNode; label: string }) {
+function Stat({ icon, value, label, index = 0 }: { icon: React.ReactNode; value: React.ReactNode; label: string; index?: number }) {
   return (
-    <div className="card flex flex-col gap-1 p-4">
+    <div
+      className="card flex flex-col gap-1 p-4 animate-rise"
+      style={{ animationDelay: `${index * 70}ms`, animationFillMode: "backwards" }}
+    >
       <div className="flex items-center gap-1.5">{icon}</div>
       <div className="font-display text-2xl font-extrabold text-text">{value}</div>
       <div className="text-xs font-semibold text-muted">{label}</div>

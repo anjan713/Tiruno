@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, Volume2, Square, Loader2, Check, AlertTriangle, Sparkles, Link2, Bookmark } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
-import { Mascot } from "@/components/mascot/Mascot";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { SkeletonCard } from "@/components/ui/Skeleton";
 import { useMascot } from "@/components/mascot/MascotProvider";
 import { speak, stopSpeaking } from "@/lib/voice/voice";
 import type { StoredArticle } from "@/lib/articles";
@@ -90,15 +92,14 @@ export default function ArticlesPage() {
   const saved = articles.filter((a) => a.kind === "bookmark");
 
   return (
-    <div className="pb-16">
-      <header className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <p className="font-display text-sm font-bold uppercase tracking-wide text-secondary">Saved &amp; ready</p>
-          <h1 className="font-display text-display text-text">My Articles</h1>
-          <p className="text-muted">Bookmarks from the extension + 3 fresh reads summarised daily.</p>
-        </div>
-        <Mascot state={speakingId ? "talking" : "idle"} size={84} float lean />
-      </header>
+    <div>
+      <PageHeader
+        accent="secondary"
+        eyebrow="Saved & ready"
+        title="My Articles"
+        subtitle="Bookmarks from the extension + 3 fresh reads summarised daily."
+        mascot={speakingId ? "talking" : "idle"}
+      />
 
       {/* Add by URL */}
       <div className="card mb-8 p-4">
@@ -126,9 +127,14 @@ export default function ArticlesPage() {
       {/* Daily ready */}
       <SectionTitle icon={<Sparkles className="h-4 w-4 text-amber" />} title="Today's ready reads" sub="Pre-summarised — tap to have Tiru explain" />
       <div className="mb-8 flex flex-col gap-3">
-        {!loaded && <Skeleton />}
-        {daily.map((a) => (
-          <ArticleCard key={a.id} a={a} speaking={speakingId === a.id} onExplain={() => explain(a)} />
+        {!loaded && (
+          <>
+            <SkeletonCard />
+            <SkeletonCard />
+          </>
+        )}
+        {daily.map((a, i) => (
+          <ArticleCard key={a.id} a={a} index={i} speaking={speakingId === a.id} onExplain={() => explain(a)} />
         ))}
       </div>
 
@@ -136,13 +142,13 @@ export default function ArticlesPage() {
       <SectionTitle icon={<Bookmark className="h-4 w-4 text-secondary" />} title="Bookmarked" sub="Saved from the Tiruno Chrome extension" />
       <div className="flex flex-col gap-3">
         {loaded && saved.length === 0 && (
-          <div className="card flex items-center gap-3 p-5 text-muted">
-            <Mascot state="empty" size={64} />
-            <p>No bookmarks yet — use the Chrome extension (or paste a link above) to save articles here.</p>
-          </div>
+          <EmptyState
+            title="No bookmarks yet"
+            description="Use the Tiruno Chrome extension — or paste a link above — to save articles here."
+          />
         )}
-        {saved.map((a) => (
-          <ArticleCard key={a.id} a={a} speaking={speakingId === a.id} onExplain={() => explain(a)} />
+        {saved.map((a, i) => (
+          <ArticleCard key={a.id} a={a} index={i} speaking={speakingId === a.id} onExplain={() => explain(a)} />
         ))}
       </div>
     </div>
@@ -158,13 +164,12 @@ function SectionTitle({ icon, title, sub }: { icon: React.ReactNode; title: stri
   );
 }
 
-function Skeleton() {
-  return <div className="h-24 animate-pulse rounded-card bg-surface-alt" />;
-}
-
-function ArticleCard({ a, speaking, onExplain }: { a: StoredArticle; speaking: boolean; onExplain: () => void }) {
+function ArticleCard({ a, index = 0, speaking, onExplain }: { a: StoredArticle; index?: number; speaking: boolean; onExplain: () => void }) {
   return (
-    <div className="card p-5">
+    <div
+      className="card p-5 animate-rise"
+      style={{ animationDelay: `${Math.min(index * 60, 300)}ms`, animationFillMode: "backwards" }}
+    >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="mb-1 flex flex-wrap items-center gap-2">

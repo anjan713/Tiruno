@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Newspaper, Clock, Sparkles, ArrowRight, Volume2, Loader2, Square } from "lucide-react";
-import { Mascot } from "@/components/mascot/Mascot";
 import { useMascot } from "@/components/mascot/MascotProvider";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { playSfx } from "@/lib/sound/sfx";
 import { speak, stopSpeaking } from "@/lib/voice/voice";
 import { FEED } from "@/lib/mock/data";
@@ -57,22 +57,25 @@ export default function FeedPage() {
   };
 
   return (
-    <div className="pb-16">
-      <header className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <p className="font-display text-sm font-bold uppercase tracking-wide text-secondary">Fresh for you</p>
-          <h1 className="font-display text-display text-text">Feed</h1>
-          <p className="text-muted">Trending reads turned into gamified article units.</p>
-        </div>
-        <Mascot state="idle" size={84} float lean />
-      </header>
+    <div>
+      <PageHeader
+        accent="secondary"
+        eyebrow="Fresh for you"
+        title="Feed"
+        subtitle="Trending reads turned into gamified article units."
+        mascot="idle"
+      />
 
       <div className="flex flex-col gap-3">
-        {FEED.map((item) => {
+        {FEED.map((item, i) => {
           const isSpeaking = speakingId === item.id;
           const isBusy = busyId === item.id;
           return (
-            <div key={item.id} className="card p-5 transition-all hover:shadow-lift">
+            <div
+              key={item.id}
+              className="card p-5 transition-all hover:shadow-lift animate-rise"
+              style={{ animationDelay: `${Math.min(i * 60, 360)}ms`, animationFillMode: "backwards" }}
+            >
               <div className="flex items-center gap-4">
                 <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-secondary/10 text-secondary">
                   <Newspaper className="h-6 w-6" />

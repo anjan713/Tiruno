@@ -23,7 +23,7 @@ export function Nav() {
   const toggleMuted = useGameStore((s) => s.toggleMuted);
 
   return (
-    <nav className="flex h-full w-[88px] shrink-0 flex-col gap-2 border-r border-border bg-surface px-3 py-5 lg:w-[240px]">
+    <nav className="hidden h-full w-[88px] shrink-0 flex-col gap-2 border-r border-border bg-surface px-3 py-5 md:flex lg:w-[240px]">
       <Link href="/learn" className="mb-4 flex items-center gap-2 px-2" onClick={() => primeAudio()}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/mascot/poses/wave.webp" alt="Tiru" className="h-10 w-10 object-contain drag-none" />

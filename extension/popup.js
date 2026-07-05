@@ -15,6 +15,44 @@ function setStatus(el, msg, kind) {
   el.className = "status " + (kind || "");
 }
 
+// --- Offline queue ---------------------------------------------------------
+// The extension works whether or not Tiruno is running. If a bookmark can't be
+// delivered, it's stored locally and flushed later by the background worker.
+
+async function getQueue() {
+  const { queue = [] } = await chrome.storage.local.get("queue");
+  return Array.isArray(queue) ? queue : [];
+}
+
+async function enqueueBookmark(item) {
+  const queue = await getQueue();
+  if (!queue.some((q) => q.url === item.url)) queue.push(item);
+  await chrome.storage.local.set({ queue });
+  chrome.runtime.sendMessage({ type: "badge" });
+}
+
+// Ask the background worker to deliver any queued bookmarks now.
+function flushQueue() {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage({ type: "flush" }, (res) =>
+        resolve(res || { sent: 0, left: 0 })
+      );
+    } catch {
+      resolve({ sent: 0, left: 0 });
+    }
+  });
+}
+
+async function renderQueueHint() {
+  const el = $("queueHint");
+  if (!el) return;
+  const n = (await getQueue()).length;
+  el.textContent = n
+    ? `${n} bookmark${n > 1 ? "s" : ""} queued — will sync when Tiruno is live.`
+    : "";
+}
+
 // Scraper injected into the Canvas tab to read course names from the dashboard / nav.
 function scrapeCanvasCourses() {
   const names = new Set();
@@ -47,6 +85,12 @@ async function init() {
   if (tab?.url && (isCanvas || isMockCanvas)) {
     $("canvasSection").style.display = "block";
   }
+
+  // Tiruno may have come back online since we queued bookmarks — try to deliver
+  // them now, then reflect whatever's still pending.
+  const { sent } = await flushQueue();
+  if (sent > 0) setStatus($("status"), `✓ Synced ${sent} queued bookmark${sent > 1 ? "s" : ""}.`, "ok");
+  await renderQueueHint();
 }
 
 $("tirunoUrl").addEventListener("change", async (e) => {
@@ -59,19 +103,28 @@ $("bookmarkBtn").addEventListener("click", async () => {
   if (!tab?.url) return;
   setStatus($("status"), "Sending to Tiru…", "info");
   $("bookmarkBtn").disabled = true;
+  const item = { url: tab.url, title: tab.title, at: Date.now() };
   try {
     const res = await fetch(tirunoUrl + "/api/articles", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: tab.url, title: tab.title }),
+      body: JSON.stringify({ url: item.url, title: item.title }),
     });
-    const data = await res.json();
-    if (data.ok) setStatus($("status"), "✓ Saved — Tiru is summarising it.", "ok");
-    else setStatus($("status"), data.error || "Could not save.", "err");
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok) {
+      setStatus($("status"), "✓ Saved — Tiru is summarising it.", "ok");
+    } else {
+      // Server reachable but rejected (e.g. transient) — queue for retry.
+      await enqueueBookmark(item);
+      setStatus($("status"), "Saved offline — Tiruno will sync it when it's live.", "info");
+    }
   } catch {
-    setStatus($("status"), "Couldn't reach Tiruno at " + tirunoUrl, "err");
+    // App unreachable — the whole point of the offline queue.
+    await enqueueBookmark(item);
+    setStatus($("status"), "Tiruno isn't running — saved offline, will sync automatically.", "info");
   } finally {
     $("bookmarkBtn").disabled = false;
+    await renderQueueHint();
   }
 });
 

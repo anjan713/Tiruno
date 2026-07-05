@@ -5,19 +5,29 @@ let current: HTMLAudioElement | null = null;
 const TTS_MIME = "audio/mpeg";
 
 /**
- * Fetch Deepgram TTS for `text` and return an <audio> element that is already playing.
- * Streams the audio through MediaSource so playback begins on the first chunk instead of
- * waiting for the whole file to download (this is what removed the answer lag). Falls back
- * to buffered blob playback when MediaSource/MP3 streaming isn't supported.
+ * Synthesize `text` via the active server VoiceProvider (Deepgram/OpenAI/…) and
+ * return an <audio> element that is already playing. Streams through MediaSource
+ * so playback begins on the first chunk instead of waiting for the whole file
+ * (this is what removed the answer lag). Falls back to buffered blob playback
+ * when streaming isn't supported, and to the browser's built-in SpeechSynthesis
+ * when no server provider is configured (the zero-API-key path).
  */
 export async function speak(text: string): Promise<HTMLAudioElement> {
   stopSpeaking();
-  const res = await fetch("/api/tts", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
-  });
-  if (!res.ok) throw new Error(`TTS failed (${res.status})`);
+  let res: Response;
+  try {
+    res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+  } catch {
+    // Network/server unreachable — fall back to the browser's built-in voice.
+    return speakViaWebSpeech(text);
+  }
+  // 501 = no server TTS provider configured; any other failure also degrades to
+  // the browser's SpeechSynthesis so narration always works (zero-key path).
+  if (!res.ok) return speakViaWebSpeech(text);
 
   const canStream =
     typeof MediaSource !== "undefined" &&
@@ -98,7 +108,55 @@ function streamSpeech(stream: ReadableStream<Uint8Array>): HTMLAudioElement {
   return audio;
 }
 
+/**
+ * Zero-key fallback: speak via the browser's SpeechSynthesis API. Returns a
+ * detached <audio> element used purely as a control surface — its `pause()` is
+ * wired to cancel synthesis, and an "ended" event is dispatched when speech
+ * finishes, so every existing caller (onended handlers, stopSpeaking) keeps
+ * working unchanged.
+ */
+function speakViaWebSpeech(text: string): HTMLAudioElement {
+  const audio = new Audio();
+  current = audio;
+  const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
+  const end = () => audio.dispatchEvent(new Event("ended"));
+
+  if (!synth || typeof SpeechSynthesisUtterance === "undefined") {
+    // No speech support at all — resolve callers promptly so the UI advances.
+    setTimeout(end, 0);
+    return audio;
+  }
+
+  const origPause = audio.pause.bind(audio);
+  audio.pause = () => {
+    origPause();
+    try {
+      synth.cancel();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate = 1.0;
+  utter.pitch = 1.0;
+  utter.onend = end;
+  utter.onerror = end;
+  try {
+    synth.cancel();
+    synth.speak(utter);
+  } catch {
+    setTimeout(end, 0);
+  }
+  return audio;
+}
+
 export function stopSpeaking() {
+  try {
+    if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+  } catch {
+    /* ignore */
+  }
   if (current) {
     current.pause();
     current.currentTime = 0;
@@ -297,12 +355,23 @@ export class VoiceListener {
   }
 }
 
+/** Thrown when no server STT provider is configured (HTTP 501 from /api/stt). */
+export class STTUnavailableError extends Error {
+  constructor() {
+    super("Speech-to-text needs a provider (set DEEPGRAM_API_KEY or OPENAI_API_KEY).");
+    this.name = "STTUnavailableError";
+  }
+}
+
 export async function transcribe(blob: Blob): Promise<string> {
   const res = await fetch("/api/stt", {
     method: "POST",
     headers: { "Content-Type": blob.type || "audio/webm" },
     body: blob,
   });
+  // Unlike TTS, recorded-clip STT has no built-in browser equivalent, so surface
+  // a typed error the UI can show instead of silently failing.
+  if (res.status === 501) throw new STTUnavailableError();
   if (!res.ok) throw new Error(`STT failed (${res.status})`);
   const json = await res.json();
   return (json?.transcript ?? "").trim();

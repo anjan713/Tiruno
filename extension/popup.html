@@ -5,10 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tiruno Companion</title>
     <style>
-      :root { --orange:#FF7A1A; --press:#E8650A; --blue:#3DA5F4; --bg:#FFF8F0; --surface:#fff; --text:#2B2320; --muted:#8A7E76; --border:#F0E2D4; }
+      :root {
+        color-scheme: light dark;
+        --orange:#FF7A1A; --press:#E8650A; --blue:#3DA5F4; --blue-press:#2b86cf;
+        --bg:#FFF8F0; --surface:#fff; --text:#2B2320; --muted:#8A7E76; --border:#F0E2D4;
+        --ok:#3a9d57; --err:#d4493f;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --orange:#FF8A3D; --press:#D66018; --blue:#56B2FA; --blue-press:#2b7bbf;
+          --bg:#1E1714; --surface:#271F1A; --text:#F7EFE8; --muted:#B6A89E; --border:#3A2F28;
+          --ok:#56d178; --err:#FF6E72;
+        }
+      }
       * { box-sizing: border-box; }
       body { width: 340px; margin: 0; font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); }
       header { display:flex; align-items:center; gap:8px; padding:14px 16px; border-bottom:1px solid var(--border); }
+      header .mark { width:28px; height:28px; border-radius:8px; object-fit:contain; background: var(--surface); padding:1px; flex:0 0 auto; }
       header .logo { font-weight:800; font-size:18px; color: var(--orange); }
       .body { padding: 14px 16px; }
       .label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color: var(--muted); margin-bottom:6px; }
@@ -17,10 +30,10 @@
       .page .url { font-size:11px; color: var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
       button { width:100%; border:none; border-radius:12px; padding:11px; font-weight:800; font-size:14px; cursor:pointer; color:#fff; background: var(--orange); box-shadow: 0 3px 0 var(--press); transition: transform .08s; }
       button:active { transform: translateY(3px); box-shadow:none; }
-      button.secondary { background: var(--blue); box-shadow: 0 3px 0 #2b86cf; }
+      button.secondary { background: var(--blue); box-shadow: 0 3px 0 var(--blue-press); }
       button:disabled { opacity:.5; cursor: default; }
       .status { margin-top:10px; font-size:13px; font-weight:600; min-height:18px; }
-      .status.ok { color:#3a9d57; } .status.err { color:#d4493f; } .status.info { color: var(--orange); }
+      .status.ok { color:var(--ok); } .status.err { color:var(--err); } .status.info { color: var(--orange); }
       .section { margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
       .hint { font-size:11px; color: var(--muted); margin-top:8px; }
       .settings { margin-top:14px; padding-top:12px; border-top:1px dashed var(--border); }
@@ -30,7 +43,8 @@
   </head>
   <body>
     <header>
-      <span class="logo">◆ Tiruno</span>
+      <img class="mark" src="tiru.webp" alt="Tiru" />
+      <span class="logo">Tiruno</span>
       <span style="font-size:12px;color:var(--muted)">Companion</span>
     </header>
     <div class="body">
@@ -42,6 +56,7 @@
       <button id="bookmarkBtn">＋ Bookmark to Tiruno</button>
       <div class="status" id="status"></div>
       <div class="hint">Tiru summarises it and reads it aloud in <b>My Articles</b>.</div>
+      <div class="hint" id="queueHint" style="color:var(--orange)"></div>
 
       <div class="section" id="canvasSection" style="display:none">
         <div class="label">Canvas detected</div>

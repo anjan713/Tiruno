@@ -1,13 +1,13 @@
 "use client";
 
-import { Flame } from "lucide-react";
+import { Flame, Newspaper } from "lucide-react";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import { Hearts } from "@/components/ui/Hearts";
 import { useGameStore } from "@/lib/store/useGameStore";
-import { skillScore } from "@/lib/mock/data";
+import { skillScore } from "@/lib/learn/skill";
 
 export function ContextRail() {
-  const { dailyXp, dailyGoal, streak, hearts, maxHearts, topicScores } = useGameStore();
+  const { dailyXp, dailyGoal, streak, hearts, maxHearts, topicScores, articlesReadIds } = useGameStore();
 
   return (
     <aside className="hidden h-full w-[320px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-surface px-5 py-6 scroll-thin xl:flex">
@@ -37,6 +37,15 @@ export function ContextRail() {
           <span className="font-display text-2xl font-extrabold text-text">{hearts}</span>
           <span className="text-xs font-semibold text-muted">hearts</span>
         </div>
+      </div>
+
+      {/* Articles read */}
+      <div className="card flex items-center justify-between p-4">
+        <div className="flex items-center gap-2">
+          <Newspaper className="h-5 w-5 text-secondary" />
+          <span className="font-semibold text-text">Articles read</span>
+        </div>
+        <span className="font-display text-2xl font-extrabold text-text">{articlesReadIds.length}</span>
       </div>
 
       {/* Skill score mini */}

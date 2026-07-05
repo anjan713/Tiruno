@@ -2,22 +2,23 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { GraduationCap, Briefcase, ArrowRight, Loader2, AlertCircle } from "lucide-react";
+import { Briefcase, ArrowRight, Loader2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
+import { Logo } from "@/components/brand/Logo";
 import { PROFILES, type ProfileId } from "@/lib/mock/profiles";
 import { applyProfile } from "@/lib/profileSync";
 import { primeAudio, playSfx } from "@/lib/sound/sfx";
 
+// Professional-only track (Student track is intentionally hidden).
 const TABS: { id: ProfileId; label: string; icon: React.ElementType }[] = [
-  { id: "student", label: "Student", icon: GraduationCap },
   { id: "professional", label: "Professional", icon: Briefcase },
 ];
 
 export default function LoginPage() {
   const router = useRouter();
-  const [sel, setSel] = useState<ProfileId>("student");
-  const [username, setUsername] = useState(PROFILES.student.username);
+  const [sel, setSel] = useState<ProfileId>("professional");
+  const [username, setUsername] = useState(PROFILES.professional.username);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -51,9 +52,10 @@ export default function LoginPage() {
         style={{ backgroundImage: "url(/art/bg/bg_onboarding.webp)" }}
       />
       <div className="relative mx-auto flex min-h-screen max-w-lg flex-col items-center justify-center px-6 py-12">
-        <div className="mb-6 font-display text-3xl font-extrabold text-primary">◆ Tiruno</div>
+        <Logo size="lg" className="mb-6" />
 
-        {/* Top bar: switch Student / Professional */}
+        {/* Track switcher — hidden when only one track is available */}
+        {TABS.length > 1 && (
         <div className="mb-8 flex w-full max-w-xs rounded-chip bg-surface-alt p-1">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button
@@ -69,6 +71,7 @@ export default function LoginPage() {
             </button>
           ))}
         </div>
+        )}
 
         {/* Profile card */}
         <div key={sel} className="card w-full animate-rise p-6">

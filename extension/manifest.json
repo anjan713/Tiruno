@@ -5,9 +5,12 @@
   "description": "Bookmark articles into Tiruno (Tiru summarises & explains them) and connect Canvas.",
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Tiruno Companion"
+    "default_title": "Tiruno Companion",
+    "default_icon": { "16": "icon.png", "48": "icon.png", "128": "icon.png" }
   },
-  "permissions": ["activeTab", "scripting", "storage"],
+  "icons": { "16": "icon.png", "48": "icon.png", "128": "icon.png" },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["activeTab", "scripting", "storage", "alarms"],
   "host_permissions": [
     "http://localhost:3002/*",
     "http://localhost:3000/*",

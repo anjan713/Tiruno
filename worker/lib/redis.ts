@@ -1,22 +1,12 @@
-import Redis from "ioredis";
+import type Redis from "ioredis";
+import { createStore } from "../../src/lib/core/store";
 
 /**
- * Create an ioredis client for the worker. Prefers REDIS_URL (local dev Redis Stack),
- * falls back to REDIS_* cloud creds. `maxRetriesPerRequest: null` is required so that
- * blocking commands (XREADGROUP ... BLOCK) don't throw on idle waits.
+ * Create a storage client for the worker via the shared registry. Resolves to
+ * Redis (REDIS_URL/REDIS_HOST) or the in-memory store. `blocking: true` keeps
+ * XREADGROUP ... BLOCK from throwing on idle waits (maxRetriesPerRequest: null).
+ * Typed as ioredis `Redis` so existing worker code is unchanged.
  */
 export function makeRedis(): Redis {
-  const url = process.env.REDIS_URL;
-  if (url) {
-    return new Redis(url, { maxRetriesPerRequest: null });
-  }
-  const ssl = String(process.env.REDIS_SSL ?? "").toLowerCase();
-  return new Redis({
-    host: process.env.REDIS_HOST,
-    port: Number(process.env.REDIS_PORT ?? 6379),
-    username: process.env.REDIS_USERNAME || undefined,
-    password: process.env.REDIS_PWD || undefined,
-    tls: ssl === "true" || ssl === "1" ? {} : undefined,
-    maxRetriesPerRequest: null,
-  });
+  return createStore({ blocking: true }) as unknown as Redis;
 }

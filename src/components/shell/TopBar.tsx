@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { LogOut, Moon, Sun, Volume2, VolumeX } from "lucide-react";
+import { Logo } from "@/components/brand/Logo";
 import { useGameStore } from "@/lib/store/useGameStore";
 import { PROFILES } from "@/lib/mock/profiles";
 
@@ -21,7 +22,7 @@ export function TopBar() {
     <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4">
       <div className="flex items-center gap-2.5">
         {/* Brand mark — only when the left rail is hidden (mobile) */}
-        <span className="font-display text-lg font-extrabold text-primary md:hidden">Tiruno</span>
+        <Logo size="sm" className="md:hidden" />
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={avatar} alt={name} className="drag-none hidden h-9 w-9 rounded-xl bg-surface-alt object-contain p-0.5 sm:block" />
         <div className="hidden leading-tight sm:block">

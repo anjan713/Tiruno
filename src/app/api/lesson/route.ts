@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getRedis } from "@/lib/redis";
 import { enqueue } from "@/lib/jobs";
 import { genId } from "@/lib/articles";
+import { getOrGenerateLesson } from "@/lib/learn/generate";
 
 export const runtime = "nodejs";
 
@@ -32,16 +33,33 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** GET ?id=<lessonId> -> generated lesson; GET ?jobId=<id> -> job status. */
+/** GET ?id=<lessonId> -> generated lesson; GET ?jobId=<id> -> job status.
+ *  When the lesson isn't cached yet, generate it on demand from ?article / ?topic
+ *  (so bookmark + prerequisite lessons work without a running worker). */
 export async function GET(req: NextRequest) {
-  const id = req.nextUrl.searchParams.get("id");
-  const jobId = req.nextUrl.searchParams.get("jobId");
+  const sp = req.nextUrl.searchParams;
+  const id = sp.get("id");
+  const jobId = sp.get("jobId");
   try {
     const r = getRedis();
     if (id) {
       const raw = await r.get(lessonKey(id));
-      if (!raw) return Response.json({ error: "not found" }, { status: 404 });
-      return Response.json({ lesson: JSON.parse(raw) });
+      if (raw) return Response.json({ lesson: JSON.parse(raw) });
+
+      // Not cached — author on demand if we have something to ground it in.
+      const article = sp.get("article") || undefined;
+      const topic = sp.get("topic") || undefined;
+      if (article || topic) {
+        const lesson = await getOrGenerateLesson({
+          id,
+          articleId: article,
+          topic,
+          index: Number(sp.get("index") || 1),
+          count: Number(sp.get("count") || 1),
+        });
+        if (lesson) return Response.json({ lesson });
+      }
+      return Response.json({ error: "not found" }, { status: 404 });
     }
     if (jobId) {
       const raw = await r.get(jobKey(jobId));

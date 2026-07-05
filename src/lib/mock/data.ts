@@ -19,6 +19,8 @@ export interface Lesson {
   topic: string;
   concept: string; // short teaching explanation shown (and narrated) before questions
   questions: MCQ[];
+  /** Set when the lesson was authored from an ingested article (engagement linkage). */
+  articleId?: string;
 }
 
 export interface ArticleSegment {
@@ -43,6 +45,14 @@ export interface SkillNode {
   status: NodeStatus;
   xp: number;
   contentId?: string; // lesson or article id
+  /** Set when this node was derived from a bookmarked article (for on-demand lesson gen). */
+  articleId?: string;
+  /** Topic to ground a generated lesson when contentId isn't pre-generated. */
+  topic?: string;
+  /** This lesson's position within its section + the section's total, so multi-lesson
+   *  sections generate distinct lessons covering different parts of the article. */
+  lessonIndex?: number;
+  lessonCount?: number;
 }
 
 export interface Unit {
@@ -555,8 +565,10 @@ export const REVIEW_QUEUE: MCQ[] = [
 
 export interface TopicScore {
   topic: string;
-  mastery: number; // 0-100
-  currency: number; // 0-100
+  mastery: number; // 0-100 — how well the topic is known
+  currency: number; // 0-100 — how current that knowledge is (decays while idle)
+  /** Local date key (YYYY-M-D) of the last in-app activity for this topic; drives decay. */
+  lastActive?: string;
 }
 
 export const TOPIC_SCORES: TopicScore[] = [
@@ -565,9 +577,8 @@ export const TOPIC_SCORES: TopicScore[] = [
   { topic: "AI / LLMs", mastery: 21, currency: 95 },
 ];
 
-export function skillScore(t: TopicScore) {
-  return Math.round(t.mastery * 0.65 + t.currency * 0.35);
-}
+// `skillScore` now lives in src/lib/learn/skill.ts so the model (with currency decay and
+// topic-progress updates) is a single, testable abstraction shared by the store and UI.
 
 export interface FeedItem {
   id: string; // -> ARTICLES key

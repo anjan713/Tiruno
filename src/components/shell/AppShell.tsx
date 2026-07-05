@@ -4,6 +4,7 @@ import { Nav } from "./Nav";
 import { BottomNav } from "./BottomNav";
 import { ContextRail } from "./ContextRail";
 import { TopBar } from "./TopBar";
+import { TiruChat } from "@/components/tiru/TiruChat";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -17,6 +18,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <ContextRail />
       </div>
       <BottomNav />
+      <TiruChat />
     </div>
   );
 }

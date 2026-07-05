@@ -4,6 +4,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { PROFILES, type ProfileId } from "@/lib/mock/profiles";
 import type { TopicScore } from "@/lib/mock/data";
+import { creditDailyStreak } from "@/lib/learn/streak";
+import { applyTopicProgress } from "@/lib/learn/skill";
 
 export type Persona = "student" | "professional" | null;
 export type Theme = "light" | "dark";
@@ -29,6 +31,16 @@ interface GameState {
   // progress
   completedNodes: string[];
   topicScores: TopicScore[];
+  /** User-defined section (unit) priority per track: courseId -> ordered unit ids. */
+  sectionOrder: Record<string, string[]>;
+  /** Local date (YYYY-M-D) the daily streak was last advanced. */
+  lastStreakDate: string | null;
+  /** Unique ids of articles fully read in-app (drives the "articles read" metric). */
+  articlesReadIds: string[];
+  /** Free-text keywords of interest added in the profile (>=3 required to unlock Learn). */
+  interestKeywords: string[];
+  /** Article ids the user added as "articles of interest" (>=3 required to unlock Learn). */
+  interestArticleIds: string[];
 
   // prefs
   theme: Theme;
@@ -52,7 +64,13 @@ interface GameState {
   loseHeart: () => void;
   refillHearts: () => void;
   completeNode: (id: string) => void;
-  keepStreak: () => void;
+  markArticleRead: (articleId: string) => void;
+  recordTopicProgress: (topic: string, accuracyPct: number) => void;
+  addInterestKeyword: (keyword: string) => void;
+  removeInterestKeyword: (keyword: string) => void;
+  addInterestArticle: (id: string) => void;
+  removeInterestArticle: (id: string) => void;
+  setSectionOrder: (trackId: string, unitIds: string[]) => void;
 
   setTheme: (t: Theme) => void;
   toggleTheme: () => void;
@@ -82,6 +100,11 @@ export const useGameStore = create<GameState>()(
 
       completedNodes: ["a1"],
       topicScores: PROFILES.student.topicScores,
+      sectionOrder: {},
+      lastStreakDate: null,
+      articlesReadIds: [],
+      interestKeywords: [],
+      interestArticleIds: [],
 
       theme: "light",
       muted: false,
@@ -109,6 +132,10 @@ export const useGameStore = create<GameState>()(
           dailyGoal: p.dailyGoal,
           completedNodes: p.completedNodes,
           topicScores: p.topicScores,
+          lastStreakDate: null,
+          articlesReadIds: [],
+          interestKeywords: [],
+          interestArticleIds: [],
         });
       },
       logout: () => set({ profileId: null, onboarded: false }),
@@ -139,12 +166,39 @@ export const useGameStore = create<GameState>()(
       loseHeart: () => set((s) => ({ hearts: Math.max(0, s.hearts - 1) })),
       refillHearts: () => set((s) => ({ hearts: s.maxHearts })),
       completeNode: (id) =>
+        set((s) => {
+          if (s.completedNodes.includes(id)) return s;
+          const completedNodes = [...s.completedNodes, id];
+          // Finishing any node counts as activity for the day -> advance the daily streak.
+          // Consecutive-day logic (and reset-on-miss) lives in creditDailyStreak.
+          const { streak, lastStreakDate } = creditDailyStreak(s);
+          return { completedNodes, streak, lastStreakDate };
+        }),
+      markArticleRead: (articleId) =>
         set((s) =>
-          s.completedNodes.includes(id)
+          s.articlesReadIds.includes(articleId)
             ? s
-            : { completedNodes: [...s.completedNodes, id] }
+            : { articlesReadIds: [...s.articlesReadIds, articleId] }
         ),
-      keepStreak: () => set((s) => ({ streak: s.streak + 1 })),
+      recordTopicProgress: (topic, accuracyPct) =>
+        set((s) => ({ topicScores: applyTopicProgress(s.topicScores, topic, accuracyPct) })),
+      addInterestKeyword: (keyword) =>
+        set((s) => {
+          const k = keyword.trim();
+          if (!k || s.interestKeywords.some((x) => x.toLowerCase() === k.toLowerCase())) return s;
+          return { interestKeywords: [...s.interestKeywords, k] };
+        }),
+      removeInterestKeyword: (keyword) =>
+        set((s) => ({ interestKeywords: s.interestKeywords.filter((k) => k !== keyword) })),
+      addInterestArticle: (id) =>
+        set((s) => (s.interestArticleIds.includes(id) ? s : { interestArticleIds: [...s.interestArticleIds, id] })),
+      removeInterestArticle: (id) =>
+        set((s) => ({
+          interestArticleIds: s.interestArticleIds.filter((x) => x !== id),
+          articlesReadIds: s.articlesReadIds.filter((x) => x !== id),
+        })),
+      setSectionOrder: (trackId, unitIds) =>
+        set((s) => ({ sectionOrder: { ...s.sectionOrder, [trackId]: unitIds } })),
 
       setTheme: (theme) => set({ theme }),
       toggleTheme: () => set((s) => ({ theme: s.theme === "light" ? "dark" : "light" })),
@@ -170,6 +224,11 @@ export const useGameStore = create<GameState>()(
         dailyXp: s.dailyXp,
         dailyGoal: s.dailyGoal,
         completedNodes: s.completedNodes,
+        sectionOrder: s.sectionOrder,
+        lastStreakDate: s.lastStreakDate,
+        articlesReadIds: s.articlesReadIds,
+        interestKeywords: s.interestKeywords,
+        interestArticleIds: s.interestArticleIds,
         theme: s.theme,
         muted: s.muted,
       }),

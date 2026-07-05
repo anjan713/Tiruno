@@ -24,7 +24,9 @@ export function OPTIONS() {
 
 export async function GET() {
   try {
-    await ensureDaily();
+    // Populate today's real reads in the background so the response is never blocked
+    // on feed/network latency; clients poll GET until the new articles turn "ready".
+    void ensureDaily().catch(() => {});
     const articles = await listArticles();
     return Response.json({ articles }, { headers: CORS });
   } catch {

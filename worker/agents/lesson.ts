@@ -30,6 +30,8 @@ interface GenLesson {
   questions: GenMCQ[];
   generated: true;
   createdAt: number;
+  /** Set when the lesson was authored from an ingested article (engagement linkage). */
+  articleId?: string;
 }
 
 const lessonKey = (id: string) => `lesson:gen:${id}`;
@@ -156,6 +158,7 @@ export async function runGenerateLesson(redis: Redis, job: GenerateLessonJob): P
     questions,
     generated: true,
     createdAt: Date.now(),
+    ...(job.articleId ? { articleId: job.articleId } : {}),
   };
 
   await redis.set(lessonKey(id), JSON.stringify(lesson), "EX", 60 * 60 * 24 * 7);

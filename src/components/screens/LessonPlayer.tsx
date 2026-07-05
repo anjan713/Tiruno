@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { X, Check, BookText, RotateCcw, Volume2, Square, Mic, Loader2, ArrowRight } from "lucide-react";
+import { X, Check, BookText, RotateCcw, Volume2, Square } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
 import { Hearts } from "@/components/ui/Hearts";
@@ -13,7 +13,8 @@ import { playSfx } from "@/lib/sound/sfx";
 import { LESSONS, type Lesson } from "@/lib/mock/data";
 import type { MascotState } from "@/lib/mascot/manifest";
 import { speak, stopSpeaking } from "@/lib/voice/voice";
-import { useBargeIn } from "@/lib/voice/useBargeIn";
+import { recordEngagement } from "@/lib/notebook";
+import { FeedbackPrompt } from "@/components/screens/FeedbackPrompt";
 
 const KEYS = ["1", "2", "3", "4"];
 
@@ -31,6 +32,10 @@ export function LessonPlayer() {
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
   const nodeId = search.get("node") ?? undefined;
+  const articleParam = search.get("article") ?? undefined;
+  const topicParam = search.get("topic") ?? undefined;
+  const indexParam = search.get("index") ?? undefined;
+  const countParam = search.get("count") ?? undefined;
 
   const staticLesson = LESSONS[params.id];
   const [lesson, setLesson] = useState<Lesson>(staticLesson ?? LOADING_LESSON);
@@ -41,8 +46,8 @@ export function LessonPlayer() {
   const loseHeart = useGameStore((s) => s.loseHeart);
   const addXp = useGameStore((s) => s.addXp);
   const completeNode = useGameStore((s) => s.completeNode);
+  const recordTopicProgress = useGameStore((s) => s.recordTopicProgress);
   const refillHearts = useGameStore((s) => s.refillHearts);
-  const keepStreak = useGameStore((s) => s.keepStreak);
   const { fire } = useMascot();
   const muted = useGameStore((s) => s.muted);
 
@@ -53,7 +58,7 @@ export function LessonPlayer() {
   const [heartsLost, setHeartsLost] = useState(0);
   const [dock, setDock] = useState<MascotState>("idle");
   const [outOfHearts, setOutOfHearts] = useState(false);
-  const [phase, setPhase] = useState<"teach" | "quiz">("teach");
+  const [phase, setPhase] = useState<"teach" | "quiz" | "feedback">("teach");
   const [narrating, setNarrating] = useState(false);
 
   const q = lesson.questions[qIndex];
@@ -80,22 +85,28 @@ export function LessonPlayer() {
     if (qIndex + 1 >= total) {
       const perfect = heartsLost === 0;
       const xp = 20 + correctCount * 4;
+      const accuracy = total > 0 ? Math.round((correctCount / total) * 100) : 0;
       addXp(xp);
-      keepStreak();
       if (nodeId) completeNode(nodeId);
+      // Quiz performance advances the lesson topic's skill score (mastery + currency).
+      recordTopicProgress(lesson.topic, accuracy);
+      // If this lesson came from an ingested article, the quiz score extends that
+      // article's NotebookLM retention (engaged material survives rotation).
+      if (lesson.articleId) void recordEngagement(lesson.articleId, accuracy);
       fire(perfect ? "perfect" : "complete", {
         takeover: true,
         title: perfect ? "Perfect! No hearts lost!" : `Lesson complete! +${xp} XP`,
         gold: perfect,
         duration: 2600,
       });
-      setTimeout(() => router.push("/learn"), 1400);
+      // Surface the end-of-lesson feedback step (drives the self-learning loop).
+      setTimeout(() => setPhase("feedback"), 1400);
       return;
     }
     setQIndex((i) => i + 1);
     setSelected(null);
     setChecked(false);
-  }, [qIndex, total, heartsLost, correctCount, addXp, keepStreak, nodeId, completeNode, fire, router]);
+  }, [qIndex, total, heartsLost, correctCount, addXp, nodeId, completeNode, recordTopicProgress, lesson.topic, fire, router, lesson.articleId]);
 
   // Load a generated lesson (id not in the static set) from the API.
   useEffect(() => {
@@ -103,7 +114,12 @@ export function LessonPlayer() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/lesson?id=${encodeURIComponent(params.id)}`);
+        const qs = new URLSearchParams({ id: params.id });
+        if (articleParam) qs.set("article", articleParam);
+        if (topicParam) qs.set("topic", topicParam);
+        if (indexParam) qs.set("index", indexParam);
+        if (countParam) qs.set("count", countParam);
+        const res = await fetch(`/api/lesson?${qs.toString()}`);
         const json = await res.json();
         if (!cancelled && json?.lesson?.questions?.length) setLesson(json.lesson as Lesson);
         else if (!cancelled) setLesson(LESSONS["l-activity"]);
@@ -116,7 +132,7 @@ export function LessonPlayer() {
     return () => {
       cancelled = true;
     };
-  }, [params.id, staticLesson]);
+  }, [params.id, staticLesson, articleParam, topicParam, indexParam, countParam]);
 
   // Keyboard play (1-4, Enter)
   useEffect(() => {
@@ -161,42 +177,7 @@ export function LessonPlayer() {
     setPhase("quiz");
   };
 
-  // Hands-free Q&A while Tiru explains the concept: the mic stays open and the
-  // user can simply start talking to interrupt and ask — no button needed.
-  const {
-    stage: qaStage,
-    transcript,
-    answer,
-    supported: micSupported,
-    stopAndAsk,
-    dismiss,
-  } = useBargeIn({
-    enabled: !loading && phase === "teach",
-    muted,
-    buildAsk: (question) => ({ question, context: `${lesson.title}. ${lesson.concept}`, title: lesson.title }),
-    onInterrupt: () => {
-      stopSpeaking();
-      setNarrating(false);
-      setDock("listening");
-      playSfx("level_chime");
-    },
-    onResume: () => {
-      setNarrating(false);
-      setDock("idle");
-    },
-  });
-
-  const qaActive = qaStage !== "idle";
-  const teachDock: MascotState =
-    qaStage === "listening"
-      ? "listening"
-      : qaStage === "transcribing" || qaStage === "thinking"
-      ? "thinking"
-      : qaStage === "answered"
-      ? "talking"
-      : narrating
-      ? "talking"
-      : "idle";
+  const teachDock: MascotState = narrating ? "talking" : "idle";
 
   const progress = (qIndex + (checked ? 1 : 0)) / total;
 
@@ -245,47 +226,9 @@ export function LessonPlayer() {
                 {narrating ? <Square className="h-3.5 w-3.5" /> : <Volume2 className="h-4 w-4" />}
                 {narrating ? "Stop" : "Play narration"}
               </button>
-              <p className="mt-3 flex items-center gap-1.5 text-sm text-muted">
-                <Mic className={cn("h-3.5 w-3.5", micSupported ? "text-secondary" : "text-muted")} />
-                {micSupported ? "Just speak anytime to ask Tiru a question." : "Enable your mic to ask Tiru."}
-              </p>
             </div>
           </div>
 
-          {/* Hands-free Q&A — speak while Tiru explains to interrupt and ask */}
-          {qaActive && (
-            <div className="mt-4 card animate-rise border-2 border-secondary/40 p-5">
-              <div className="mb-3 flex items-center gap-2 text-secondary">
-                <Mic className={cn("h-4 w-4", qaStage === "listening" && "animate-pulse text-danger")} />
-                <span className="font-display text-sm font-bold">
-                  {qaStage === "listening"
-                    ? "Listening… just speak your question"
-                    : qaStage === "transcribing"
-                    ? "Transcribing…"
-                    : qaStage === "thinking"
-                    ? "Tiru is thinking…"
-                    : "Tiru says"}
-                </span>
-              </div>
-              {transcript && <p className="mb-2 italic text-muted">“{transcript}”</p>}
-              {answer && <p className="text-text">{answer}</p>}
-              <div className="mt-4 flex justify-end gap-2">
-                {qaStage === "listening" ? (
-                  <Button size="sm" onClick={stopAndAsk}>
-                    <Square className="h-4 w-4" /> Stop &amp; ask
-                  </Button>
-                ) : qaStage === "transcribing" || qaStage === "thinking" ? (
-                  <Button size="sm" variant="neutral" disabled>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Working…
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="success" onClick={dismiss}>
-                    <ArrowRight className="h-4 w-4" /> Got it
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
           <p className="mt-3 text-sm text-muted">Tiru just explained the concept — ready to try a few questions?</p>
           <div className="mt-6 flex justify-end">
             <Button size="lg" onClick={startQuiz}>
@@ -293,6 +236,18 @@ export function LessonPlayer() {
             </Button>
           </div>
         </div>
+      )}
+
+      {/* End-of-lesson feedback — drives the self-learning loop */}
+      {!loading && phase === "feedback" && (
+        <FeedbackPrompt
+          lessonTitle={lesson.title}
+          topic={lesson.topic || undefined}
+          articleId={lesson.articleId}
+          scorePct={Math.round((correctCount / total) * 100)}
+          struggled={heartsLost > 0 || correctCount / total < 0.8}
+          onDone={() => router.push("/learn")}
+        />
       )}
 
       {/* Question */}

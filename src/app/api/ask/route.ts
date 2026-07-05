@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { ARTICLES } from "@/lib/mock/data";
-import { askClaude } from "@/lib/ai/claude";
+import { answer } from "@/lib/ai/answer";
 
 export const runtime = "nodejs";
 
@@ -9,16 +9,6 @@ interface AskBody {
   articleId?: string;
   context?: string;
   title?: string;
-}
-
-/** Built-in fallback answer when Claude isn't configured or is unreachable. */
-function localAnswer(question: string): string {
-  const q = question.toLowerCase();
-  if (q.includes("vector") || q.includes("embedding"))
-    return "Vectors capture meaning, so we retrieve text that's relevant even when the wording differs — that's why semantic search beats keyword matching here.";
-  if (q.includes("hallucinat") || q.includes("trust") || q.includes("wrong"))
-    return "Grounding the model in retrieved sources keeps it honest — it answers from real material and cites it instead of guessing.";
-  return "Great question! Retrieval keeps the answer grounded in your sources, so Tiru teaches from real material and cites it — not guesses.";
 }
 
 export async function POST(req: NextRequest) {
@@ -32,6 +22,7 @@ export async function POST(req: NextRequest) {
   const question = (body.question || "").trim();
   if (!question) return Response.json({ error: "Missing question" }, { status: 400 });
 
+  // Resolve article context (mock articles) when the caller didn't supply it.
   let context = body.context || "";
   let title = body.title;
   if (!context && body.articleId && ARTICLES[body.articleId]) {
@@ -40,7 +31,6 @@ export async function POST(req: NextRequest) {
     context = a.segments.map((s) => `${s.heading}. ${s.text}`).join("\n\n");
   }
 
-  const claude = await askClaude(question, { context, title });
-  if (claude) return Response.json({ answer: claude, via: "claude" });
-  return Response.json({ answer: localAnswer(question), via: "local" });
+  const { answer: text, via } = await answer(question, { context, title });
+  return Response.json({ answer: text, via });
 }

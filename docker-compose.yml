@@ -1,0 +1,71 @@
+# Tiruno infrastructure — everything the app/worker need to run locally, free.
+#
+#   Redis Stack  → queue + state + pub/sub + RediSearch HNSW vector index
+#   Ollama       → local, free text embeddings (mxbai-embed-large, 1024-dim)
+#   ollama-pull  → one-shot: pulls the embed model so RAG works out of the box
+#
+# Quick start:
+#   docker compose up -d          # start Redis + Ollama, auto-pull the embed model
+#   npm run dev                   # app    → http://localhost:3000
+#   npm run worker                # background agent worker
+#
+# The app/worker run on the HOST (not in a container) because they use your Claude
+# subscription via the `claude` CLI login. Point them at this infra in .env.local:
+#   REDIS_URL=redis://localhost:6379
+#   OLLAMA_HOST=http://localhost:11434
+#   EMBED_PROVIDER=ollama
+#
+# Endpoints:  Redis redis://localhost:6379 · RedisInsight UI http://localhost:8001
+#             Ollama http://localhost:11434
+
+name: tiruno
+
+services:
+  redis:
+    image: redis/redis-stack:latest
+    container_name: tiruno-redis
+    ports:
+      - "6379:6379" # Redis (RediSearch / vector index)
+      - "8001:8001" # RedisInsight web UI
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: tiruno-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  # One-shot: wait for Ollama, then pull the embedding model. Exits when done.
+  # The model is cached in the ollama-models volume, so re-runs are instant no-ops.
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: tiruno-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-mxbai-embed-large}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - 'echo "Pulling embed model: $${EMBED_MODEL}"; ollama pull "$${EMBED_MODEL}" && echo "Embed model ready."'
+    restart: "no"
+
+volumes:
+  redis-data:
+  ollama-models:

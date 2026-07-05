@@ -1,17 +1,18 @@
 import type Redis from "ioredis";
 import type { ExploreSource } from "../agents/curator";
+import { getHermes, type DiscoveryStrategy } from "../../src/lib/core/hermes";
+import type { RedisLike } from "../../src/lib/core/store/types";
 
 /**
- * L2 — Self-evolving discovery + self-grading (Hermes-pattern, low-footprint).
- * Proposes follow-up research topics from a session, records the yes/no reward,
- * and a Curator step rewrites a versioned discovery strategy.
+ * L2 — Self-evolving discovery + self-grading. Candidate follow-ups are proposed
+ * here from a session; the yes/no reward and versioned strategy/skill evolution
+ * are handled by the Hermes module (src/lib/core/hermes), which persists living
+ * markdown files to the Vault and mirrors the strategy to Redis.
  */
 
 const suggestionsKey = (uid: string) => `suggestions:${uid}`;
 const seenSourcesKey = (uid: string) => `seen_sources:${uid}`;
 const seenAuthorsKey = (uid: string) => `seen_authors:${uid}`;
-const strategyKey = (uid: string) => `strategy:discovery:${uid}`;
-const IMPROVEMENTS = "improvements:log";
 
 const STOP = new Set([
   "the", "and", "for", "with", "that", "this", "from", "what", "your", "you", "are", "how",
@@ -78,80 +79,14 @@ export async function recordSuggestionOutcome(
   followup: string,
   accepted: boolean
 ): Promise<void> {
-  try {
-    await redis.lpush(
-      `${suggestionsKey(uid)}:outcomes`,
-      JSON.stringify({ followup, accepted, at: Date.now() })
-    );
-    await redis.ltrim(`${suggestionsKey(uid)}:outcomes`, 0, 199);
-  } catch {
-    /* best effort */
-  }
-}
-
-interface StrategyVersion {
-  version: number;
-  noveltyExplore: number; // 0..1 share devoted to new authors/sources
-  sourceMix: string[];
-  note: string;
-  at: number;
+  await getHermes(redis as unknown as RedisLike).recordOutcome(uid, followup, accepted);
 }
 
 /**
- * Curator step: grade past suggestions vs accept rate, then write a new versioned
- * discovery strategy + an improvements-log entry. Runs after a session / on schedule.
+ * Curator step: Hermes self-grades recent outcomes and writes a new versioned
+ * discovery strategy (+ optional learned skill + reflection) to the Vault.
+ * Runs after a session / on schedule via the "curate" job.
  */
-export async function runCurate(redis: Redis, uid: string): Promise<StrategyVersion> {
-  let accepts = 0;
-  let total = 0;
-  try {
-    const raw = await redis.lrange(`${suggestionsKey(uid)}:outcomes`, 0, 49);
-    for (const r of raw) {
-      try {
-        const o = JSON.parse(r);
-        total += 1;
-        if (o.accepted) accepts += 1;
-      } catch {
-        /* skip */
-      }
-    }
-  } catch {
-    /* best effort */
-  }
-
-  const acceptRate = total ? accepts / total : 0.5;
-  // Low accept rate → explore more new voices; high accept rate → exploit what works.
-  const noveltyExplore = Math.max(0.1, Math.min(0.5, total ? 0.2 + (0.5 - acceptRate) * 0.4 : 0.2));
-
-  let prevVersion = 0;
-  try {
-    const last = await redis.lindex(strategyKey(uid), 0);
-    if (last) prevVersion = JSON.parse(last).version ?? 0;
-  } catch {
-    /* none yet */
-  }
-
-  const version: StrategyVersion = {
-    version: prevVersion + 1,
-    noveltyExplore: Number(noveltyExplore.toFixed(2)),
-    sourceMix: ["reddit", "hackernews", "github", "youtube", "x", "web"],
-    note:
-      total === 0
-        ? "Seed strategy: balanced sources, 20% explore for new voices."
-        : `Tuned from ${total} outcomes (accept ${(acceptRate * 100).toFixed(0)}%) → explore ${(noveltyExplore * 100).toFixed(0)}%.`,
-    at: Date.now(),
-  };
-
-  try {
-    await redis.lpush(strategyKey(uid), JSON.stringify(version));
-    await redis.ltrim(strategyKey(uid), 0, 19); // keep last 20 versions for before/after
-    await redis.lpush(
-      IMPROVEMENTS,
-      JSON.stringify({ uid, version: version.version, note: version.note, at: version.at })
-    );
-    await redis.ltrim(IMPROVEMENTS, 0, 199);
-  } catch {
-    /* best effort */
-  }
-  return version;
+export async function runCurate(redis: Redis, uid: string): Promise<DiscoveryStrategy> {
+  return getHermes(redis as unknown as RedisLike).reflectAndEvolve(uid);
 }

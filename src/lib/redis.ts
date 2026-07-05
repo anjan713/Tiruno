@@ -1,31 +1,17 @@
-import Redis from "ioredis";
+import type Redis from "ioredis";
+import { createStore } from "@/lib/core/store";
 
 let client: Redis | null = null;
 
-/** Lazily-created shared ioredis client. Prefers REDIS_URL (local dev), falls back to REDIS_* creds. */
+/**
+ * Lazily-created shared storage client for the Next.js app. Resolves to the
+ * active backend (Redis when REDIS_URL/REDIS_HOST is set, otherwise the
+ * zero-infra in-memory store). Typed as ioredis `Redis` so existing callers are
+ * unchanged; the in-memory adapter is command-compatible. See
+ * `src/lib/core/store` to add or swap backends.
+ */
 export function getRedis(): Redis {
   if (client) return client;
-
-  const url = process.env.REDIS_URL;
-  if (url) {
-    client = new Redis(url, { maxRetriesPerRequest: 2, connectTimeout: 4000 });
-  } else {
-    const ssl = String(process.env.REDIS_SSL ?? "").toLowerCase();
-    client = new Redis({
-      host: process.env.REDIS_HOST,
-      port: Number(process.env.REDIS_PORT ?? 6379),
-      username: process.env.REDIS_USERNAME || undefined,
-      password: process.env.REDIS_PWD || undefined,
-      tls: ssl === "true" || ssl === "1" ? {} : undefined,
-      maxRetriesPerRequest: 2,
-      connectTimeout: 4000,
-    });
-  }
-
-  // Prevent unhandled error events from crashing the process if Redis is down.
-  client.on("error", (e) => {
-    if (process.env.NODE_ENV !== "production") console.warn("[redis]", e.message);
-  });
-
+  client = createStore() as unknown as Redis;
   return client;
 }

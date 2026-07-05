@@ -1,5 +1,5 @@
 import { getRedis } from "@/lib/redis";
-import { notebooklmSummarize, localSummarize } from "@/lib/notebooklm";
+import { summarize, localSummarize } from "@/lib/core/summarize";
 import { embed } from "@/lib/rag/embeddings";
 import { ensureVectorIndex, indexMaterial } from "@/lib/rag/vector";
 
@@ -180,9 +180,9 @@ export async function summarizeArticle(id: string): Promise<void> {
       if (!a.title || a.title === a.url) a.title = fetched.title;
       if (!a.source) a.source = fetched.source;
     }
-    const nb = await notebooklmSummarize(text, a.title, a.url).catch(() => null);
+    const { summary } = await summarize({ text, title: a.title, url: a.url });
     a.text = text;
-    a.summary = nb ?? localSummarize(text, a.title);
+    a.summary = summary;
     a.status = "ready";
     a.ready = true;
   } catch {
@@ -194,13 +194,54 @@ export async function summarizeArticle(id: string): Promise<void> {
   if (a.ready) await indexArticleVector(a);
 }
 
-const DAILY_POOL: Array<{ title: string; source: string; topic: string; text: string }> = [
-  {
-    title: "Edge Computing Moves Compute Closer to Users",
-    source: "Cloud Native Times",
-    topic: "DevOps & Cloud",
-    text: "Edge computing runs workloads on nodes near the user instead of a distant data center. This cuts round-trip latency, reduces origin load, and keeps experiences fast on poor networks. The trade-offs are harder deployment, data consistency across regions, and observability spread over many small sites.",
-  },
+const FEED_UA = "TirunoBot/1.0 (+https://tiruno.app)";
+const DAILY_COUNT = 3;
+
+/** Real developer/tech feeds the daily reads are pulled from (first reachable wins). */
+const DAILY_FEEDS = [
+  "https://dev.to/feed",
+  "https://hnrss.org/frontpage?points=150",
+];
+
+/** Parse RSS <item> / Atom <entry> blocks into {title, link}. */
+function parseFeedItems(xml: string): Array<{ title: string; link: string }> {
+  const out: Array<{ title: string; link: string }> = [];
+  const blocks = xml.match(/<(item|entry)\b[\s\S]*?<\/\1>/gi) ?? [];
+  for (const b of blocks) {
+    const rawTitle = (b.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "").replace(/<!\[CDATA\[|\]\]>/g, "");
+    const title = decodeEntities(stripTags(rawTitle)).replace(/\s+/g, " ").trim();
+    let link =
+      b.match(/<link\b[^>]*>([\s\S]*?)<\/link>/i)?.[1]?.trim() ||
+      b.match(/<link\b[^>]+href=["']([^"']+)["']/i)?.[1];
+    link = link?.replace(/<!\[CDATA\[|\]\]>/g, "").trim();
+    if (title && link && /^https?:\/\//.test(link)) out.push({ title, link });
+  }
+  return out;
+}
+
+/** Pull fresh, deduplicated items from the real feeds. */
+async function fetchFeedItems(): Promise<Array<{ title: string; link: string }>> {
+  const seen = new Set<string>();
+  const items: Array<{ title: string; link: string }> = [];
+  for (const feed of DAILY_FEEDS) {
+    try {
+      const res = await fetch(feed, { headers: { "User-Agent": FEED_UA }, signal: AbortSignal.timeout(8000) });
+      for (const it of parseFeedItems(await res.text())) {
+        const key = it.link.split("?")[0];
+        if (seen.has(key)) continue;
+        seen.add(key);
+        items.push(it);
+      }
+    } catch {
+      /* try next feed */
+    }
+    if (items.length >= DAILY_COUNT * 3) break;
+  }
+  return items;
+}
+
+/** Last-resort seed if every real feed is unreachable (keeps the demo non-empty). */
+const DAILY_FALLBACK: Array<{ title: string; source: string; topic: string; text: string }> = [
   {
     title: "Designing Idempotent APIs",
     source: "API Digest",
@@ -221,30 +262,66 @@ const DAILY_POOL: Array<{ title: string; source: string; topic: string; text: st
   },
 ];
 
-/** Ensure today has 3 pre-summarised "ready" daily articles. */
+/**
+ * Ensure today has DAILY_COUNT real, summarised "daily" articles pulled from live
+ * developer feeds. Each pick is stored as a "summarizing" stub immediately, then the
+ * full text is fetched + summarised in the background (clients poll until ready).
+ */
 export async function ensureDaily(): Promise<void> {
   const r = getRedis();
   const date = todayKey();
-  const have = await r.scard(DAILY(date));
-  if (have >= 3) return;
-  const picks = DAILY_POOL.slice(0, 3);
-  for (const p of picks) {
-    const id = `daily-${date}-${genId()}`;
-    const a: StoredArticle = {
-      id,
-      title: p.title,
-      source: p.source,
-      topic: p.topic,
-      text: p.text,
-      summary: localSummarize(p.text, p.title),
-      status: "ready",
-      ready: true,
-      kind: "daily",
-      addedAt: Date.now() - DAILY_POOL.indexOf(p), // keep order stable
-    };
-    await saveArticle(a);
-    await r.sadd(DAILY(date), id);
-    await indexArticleVector(a);
+  if ((await r.scard(DAILY(date))) >= DAILY_COUNT) return;
+
+  // Single-flight: only one in-flight request should populate the day's reads.
+  try {
+    const lock = await r.set(`articles:daily:lock:${date}`, "1", "EX", 120, "NX");
+    if (!(lock === "OK" || lock === true)) return;
+  } catch {
+    /* memory fallback without NX support → proceed */
+  }
+
+  const items = (await fetchFeedItems()).slice(0, DAILY_COUNT);
+  let order = 0;
+  if (items.length) {
+    for (const it of items) {
+      const id = `daily-${date}-${genId()}`;
+      const a: StoredArticle = {
+        id,
+        url: it.link,
+        title: it.title,
+        source: hostOf(it.link),
+        topic: "Today",
+        text: "",
+        summary: "",
+        status: "summarizing",
+        ready: false,
+        kind: "daily",
+        addedAt: Date.now() - order++,
+      };
+      await saveArticle(a);
+      await r.sadd(DAILY(date), id);
+      void summarizeArticle(id); // background: fetch full text + summarise + index
+    }
+  } else {
+    // Every feed was unreachable — seed locally so the app is never empty.
+    for (const p of DAILY_FALLBACK.slice(0, DAILY_COUNT)) {
+      const id = `daily-${date}-${genId()}`;
+      const a: StoredArticle = {
+        id,
+        title: p.title,
+        source: p.source,
+        topic: p.topic,
+        text: p.text,
+        summary: localSummarize(p.text, p.title),
+        status: "ready",
+        ready: true,
+        kind: "daily",
+        addedAt: Date.now() - order++,
+      };
+      await saveArticle(a);
+      await r.sadd(DAILY(date), id);
+      await indexArticleVector(a);
+    }
   }
   await r.expire(DAILY(date), 60 * 60 * 24 * 2);
 }

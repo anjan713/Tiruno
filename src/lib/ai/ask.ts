@@ -9,14 +9,15 @@ export interface AskTiruInput {
 
 export interface AskTiruResult {
   answer: string;
-  via: "claude" | "local" | "";
+  /** Which provider answered: "anthropic" | "openai" | "ollama" | "local" | "". */
+  via: string;
 }
 
 /**
- * Ask Tiru for an answer to a learner's question. Hits /api/ask, which uses
- * Claude when ANTHROPIC_API_KEY is set and otherwise returns a built-in answer.
- * Returns an empty answer only when the request itself fails (network/server),
- * so callers can apply their own fallback.
+ * Ask Tiru for an answer to a learner's question. Hits /api/ask, which uses the
+ * active LLM provider when one is configured and otherwise returns a built-in
+ * answer. Returns an empty answer only when the request itself fails
+ * (network/server), so callers can apply their own fallback.
  */
 export async function askTiru(input: AskTiruInput): Promise<AskTiruResult> {
   try {

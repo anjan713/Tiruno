@@ -5,33 +5,47 @@
 :root {
   --bg: 255 248 240;
   --surface: 255 255 255;
-  --surface-alt: 255 241 227;
+  --surface-alt: 255 240 224;
+  /* Hero identity — orange */
   --primary: 255 122 26;
-  --primary-press: 232 101 10;
+  --primary-press: 224 96 10;
   --primary-fg: 255 255 255;
-  --secondary: 61 165 244;
-  --success: 76 199 110;
-  --danger: 255 90 95;
-  --amber: 255 176 32;
+  /* Vibrant accent system (each has a darker "press" shade for the 3D chunk) */
+  --secondary: 28 176 246; /* blue */
+  --secondary-press: 20 147 209;
+  --success: 88 204 2; /* green */
+  --success-press: 71 167 2;
+  --danger: 255 75 110; /* pink-red */
+  --danger-press: 226 51 89;
+  --amber: 255 200 0; /* gold */
+  --amber-press: 224 172 0;
   --text: 43 35 32;
   --muted: 138 126 118;
-  --border: 240 226 212;
+  --border: 235 221 206;
+  --chunk: 231 216 200; /* neutral 3D bottom-edge for cards/buttons */
 }
 
 .dark {
-  --bg: 30 23 20;
+  --bg: 26 21 18;
   --surface: 39 31 26;
-  --surface-alt: 47 38 32;
+  --surface-alt: 49 39 33;
   --primary: 255 138 61;
-  --primary-press: 214 96 24;
+  --primary-press: 201 90 22;
   --primary-fg: 32 22 14;
-  --secondary: 86 178 250;
-  --success: 86 209 120;
-  --danger: 255 110 114;
-  --amber: 255 188 64;
+  --secondary: 66 186 250;
+  --secondary-press: 34 132 190;
+  --success: 121 214 60;
+  --success-press: 78 158 20;
+  --danger: 255 106 134;
+  --danger-press: 205 58 88;
+  --amber: 255 206 71;
+  --amber-press: 205 158 20;
+  --purple: 190 130 255;
+  --purple-press: 130 80 200;
   --text: 247 239 232;
   --muted: 182 168 158;
   --border: 58 47 40;
+  --chunk: 20 16 13;
 }
 
 * {
@@ -92,12 +106,40 @@ h1, h2, h3, h4, .font-display {
   .btn3d-success {
     background-color: rgb(var(--success));
     color: #ffffff;
-    box-shadow: 0 4px 0 rgb(76 160 92);
+    box-shadow: 0 4px 0 rgb(var(--success-press));
   }
-  .btn3d-success:active { box-shadow: 0 0 0 rgb(76 160 92); }
+  .btn3d-success:active { box-shadow: 0 0 0 rgb(var(--success-press)); }
+
+  .btn3d-secondary {
+    background-color: rgb(var(--secondary));
+    color: #ffffff;
+    box-shadow: 0 4px 0 rgb(var(--secondary-press));
+  }
+  .btn3d-secondary:active { box-shadow: 0 0 0 rgb(var(--secondary-press)); }
+
+  .btn3d-danger {
+    background-color: rgb(var(--danger));
+    color: #ffffff;
+    box-shadow: 0 4px 0 rgb(var(--danger-press));
+  }
+  .btn3d-danger:active { box-shadow: 0 0 0 rgb(var(--danger-press)); }
+
+  .btn3d-gold {
+    background-color: rgb(var(--amber));
+    color: rgb(var(--text));
+    box-shadow: 0 4px 0 rgb(var(--amber-press));
+  }
+  .btn3d-gold:active { box-shadow: 0 0 0 rgb(var(--amber-press)); }
 
   .card {
     @apply rounded-card bg-surface border border-border shadow-soft;
+  }
+  /* Chunky, tactile card — a colored 3D bottom edge (the Duolingo "tile" feel).
+     Override --edge to tint it per accent (e.g. style={{'--edge':'var(--amber-press)'}}). */
+  .card-3d {
+    @apply rounded-card bg-surface border-2 border-border;
+    --edge: var(--chunk);
+    box-shadow: 0 5px 0 rgb(var(--edge));
   }
   /* Card that responds to hover/press — for clickable cards */
   .card-interactive {
@@ -107,6 +149,71 @@ h1, h2, h3, h4, .font-display {
   .chip {
     @apply inline-flex items-center gap-1.5 rounded-chip px-3 py-1 text-sm font-semibold;
   }
+
+  /* Learning-path node — Duolingo's coin geometry: the face is a flat ELLIPSE
+     (border-radius 50% on a wider-than-tall box, ~70:57 ratio), solid color with no
+     gloss, extruded straight down by an 8px box-shadow lip. */
+  .node {
+    @apply relative grid place-items-center
+           transition-[transform,box-shadow] duration-150
+           hover:-translate-y-[2px] active:translate-y-[6px]
+           focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/40;
+    border-radius: 50%;
+  }
+  /* Every path coin is orange. State is read from brightness + the check + (for the
+     current lesson) the ring and START callout — never from a different hue. */
+  .node-done {
+    background-color: rgb(var(--primary));
+    color: #ffffff;
+    box-shadow: 0 8px 0 rgb(var(--primary-press));
+  }
+  .node-done:active { box-shadow: 0 2px 0 rgb(var(--primary-press)); }
+  .node-active {
+    background-color: rgb(var(--primary));
+    color: rgb(var(--primary-fg));
+    box-shadow: 0 8px 0 rgb(var(--primary-press));
+  }
+  .node-active:active { box-shadow: 0 2px 0 rgb(var(--primary-press)); }
+  /* Upcoming stop — a dimmer orange puck. Same hue, lower emphasis. */
+  .node-available {
+    background-color: rgb(var(--primary) / 0.28);
+    color: rgb(var(--primary));
+    box-shadow: 0 8px 0 rgb(var(--primary-press) / 0.55);
+  }
+  .node-available:active { box-shadow: 0 2px 0 rgb(var(--primary-press) / 0.55); }
+
+  /* Current-lesson coin — same flat elliptical puck as the path nodes. The mb-2
+     offsets the 8px lip so face + lip sit optically centered inside the ring. */
+  .skillnode-coin {
+    @apply relative z-[1] mb-2 flex h-[59px] w-[72px] flex-col items-center justify-center text-white;
+    border-radius: 50%;
+    background-color: rgb(var(--primary));
+    box-shadow: 0 8px 0 rgb(var(--primary-press));
+    animation: skn-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  /* Static progress ring around the current-lesson coin (Duolingo-style): a full
+     muted track plus a primary arc showing how much of the unit is already done. */
+  .skillnode-ring {
+    animation: skn-fade 0.4s ease-out both;
+  }
+  .skillnode-ring-track {
+    stroke: rgb(var(--border));
+  }
+  .skillnode-ring-fill {
+    stroke: rgb(var(--primary));
+  }
+  /* Floating "START" callout that bobs above the coin forever. */
+  .skillnode-callout {
+    @apply relative block rounded-[10px] border-2 border-border bg-surface px-3.5 py-2
+           font-display text-[15px] font-extrabold uppercase leading-none tracking-[0.08em] text-primary;
+    animation: skn-bob 1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+  }
+  .skillnode-callout-caret {
+    @apply absolute left-1/2 h-2.5 w-2.5 border-b-2 border-r-2 border-border bg-surface;
+    bottom: -7px;
+    transform: translateX(-50%) rotate(45deg);
+  }
+
   /* Shimmering skeleton placeholder */
   .skeleton {
     @apply relative overflow-hidden rounded-btn bg-surface-alt;
@@ -121,6 +228,22 @@ h1, h2, h3, h4, .font-display {
       transparent
     );
   }
+}
+
+/* Current-lesson coin choreography: coin springs in, ring fades in, callout bobs forever */
+@keyframes skn-pop {
+  0% { transform: scale(0.82); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+@keyframes skn-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+/* Gentle sine bob (0 → -8px), matched to Duolingo's START tooltip cadence. */
+@keyframes skn-bob {
+  from { transform: translateY(0); }
+  to { transform: translateY(-8px); }
 }
 
 @layer utilities {

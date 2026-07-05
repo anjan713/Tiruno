@@ -1,9 +1,13 @@
 // Pluggable text embeddings for the RAG layer.
 //
 // Provider is chosen from env at call time:
-//   VOYAGE_API_KEY  -> Voyage AI   (voyage-3.5-lite, output_dimension = EMBED_DIM)
-//   OPENAI_API_KEY  -> OpenAI      (text-embedding-3-small, dimensions = EMBED_DIM)
+//   OLLAMA_HOST     -> Ollama  (local, free; default model mxbai-embed-large, 1024-dim)
+//   OPENAI_API_KEY  -> OpenAI  (text-embedding-3-small, dimensions = EMBED_DIM)
 //   (neither)       -> deterministic local hashing embedding (offline-safe)
+//
+// Ollama is the recommended local/free default (see docker-compose.yml). Its embed
+// model MUST output EMBED_DIM dims (mxbai-embed-large = 1024); otherwise a dim guard
+// trips and we fall back to the local hashing embedder.
 //
 // Every provider returns an L2-normalized EMBED_DIM vector, so the Redis HNSW
 // index (COSINE) is consistent regardless of which one is active.
@@ -17,13 +21,13 @@ import Redis from "ioredis";
 /** Fixed embedding dimension. The vector index is created with this DIM. */
 export const EMBED_DIM = 1024;
 
-export type EmbeddingProvider = "voyage" | "openai" | "local";
+export type EmbeddingProvider = "ollama" | "openai" | "local";
 
 /** Which provider will be used given the current environment. */
 export function embeddingProvider(): EmbeddingProvider {
   const override = (process.env.EMBED_PROVIDER || "").toLowerCase();
-  if (override === "local" || override === "voyage" || override === "openai") return override;
-  if (process.env.VOYAGE_API_KEY) return "voyage";
+  if (override === "local" || override === "ollama" || override === "openai") return override;
+  if (process.env.OLLAMA_HOST) return "ollama";
   if (process.env.OPENAI_API_KEY) return "openai";
   return "local";
 }
@@ -66,7 +70,7 @@ export function localEmbed(text: string): number[] {
 }
 
 function modelName(provider: EmbeddingProvider): string {
-  if (provider === "voyage") return process.env.VOYAGE_MODEL || "voyage-3.5-lite";
+  if (provider === "ollama") return process.env.OLLAMA_EMBED_MODEL || "mxbai-embed-large";
   if (provider === "openai") return process.env.OPENAI_EMBED_MODEL || "text-embedding-3-small";
   return "local";
 }
@@ -112,12 +116,12 @@ async function cacheSet(key: string, vec: number[]): Promise<void> {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** POST with retry/backoff on 429 + 5xx (honors Retry-After). Throws on final failure. */
-async function postWithRetry(url: string, init: RequestInit, attempts = 4): Promise<Response> {
+async function postWithRetry(url: string, init: RequestInit, attempts = 4, timeoutMs = 20000): Promise<Response> {
   const backoff = [1000, 4000, 10000, 20000];
   let lastErr = "";
   for (let i = 0; i < attempts; i++) {
     try {
-      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(20000) });
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
       if (res.ok) return res;
       lastErr = String(res.status);
       if (res.status === 429 || res.status >= 500) {
@@ -134,14 +138,36 @@ async function postWithRetry(url: string, init: RequestInit, attempts = 4): Prom
   throw new Error(lastErr || "request failed");
 }
 
-async function voyageEmbed(texts: string[]): Promise<number[][]> {
-  const res = await postWithRetry("https://api.voyageai.com/v1/embeddings", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${process.env.VOYAGE_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({ model: modelName("voyage"), input: texts, output_dimension: EMBED_DIM }),
-  });
+/** Base URL of the local Ollama server (no trailing slash). */
+function ollamaBase(): string {
+  return (process.env.OLLAMA_HOST || "http://localhost:11434").replace(/\/+$/, "");
+}
+
+async function ollamaEmbed(texts: string[]): Promise<number[][]> {
+  // Cold model loads can take a while, so allow a longer per-attempt timeout.
+  const res = await postWithRetry(
+    `${ollamaBase()}/api/embed`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: modelName("ollama"), input: texts }),
+    },
+    4,
+    60000
+  );
   const json = await res.json();
-  return (json.data as Array<{ embedding: number[] }>).map((d) => l2normalize(d.embedding));
+  const embeddings = (json.embeddings as number[][]) || [];
+  if (embeddings.length !== texts.length) {
+    throw new Error(`ollama returned ${embeddings.length} embeddings for ${texts.length} inputs`);
+  }
+  return embeddings.map((e) => {
+    if (!Array.isArray(e) || e.length !== EMBED_DIM) {
+      throw new Error(
+        `ollama embedding dim ${e?.length} != ${EMBED_DIM}; set OLLAMA_EMBED_MODEL to a ${EMBED_DIM}-dim model (e.g. mxbai-embed-large)`
+      );
+    }
+    return l2normalize(e);
+  });
 }
 
 async function openaiEmbed(texts: string[]): Promise<number[][]> {
@@ -173,7 +199,7 @@ export async function embedBatch(texts: string[]): Promise<number[][]> {
     let vecs: number[][];
     let usedFallback = false;
     try {
-      if (provider === "voyage") vecs = await voyageEmbed(missTexts);
+      if (provider === "ollama") vecs = await ollamaEmbed(missTexts);
       else if (provider === "openai") vecs = await openaiEmbed(missTexts);
       else vecs = missTexts.map(localEmbed);
     } catch (e) {

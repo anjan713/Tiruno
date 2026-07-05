@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
+import { getVoiceProvider, TTS_CHAR_LIMIT } from "@/lib/core/voice";
 
 export const runtime = "nodejs";
 
-const MODEL = process.env.DEEPGRAM_TTS_MODEL || "aura-2-apollo-en";
-
 export async function POST(req: NextRequest) {
-  const key = process.env.DEEPGRAM_API_KEY;
-  if (!key) {
-    return Response.json({ error: "DEEPGRAM_API_KEY not configured" }, { status: 500 });
+  const provider = getVoiceProvider();
+  // 501 + a machine-readable flag tells the client to use browser WebSpeech.
+  if (!provider || !provider.canTTS) {
+    return Response.json({ error: "no_tts_provider", fallback: "webspeech" }, { status: 501 });
   }
 
   let text = "";
@@ -18,24 +18,17 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
   if (!text) return Response.json({ error: "Missing text" }, { status: 400 });
-  // Deepgram TTS has a per-request character cap; keep segments reasonable.
-  text = text.slice(0, 1800);
+  text = text.slice(0, TTS_CHAR_LIMIT);
 
-  const dg = await fetch(`https://api.deepgram.com/v1/speak?model=${MODEL}&encoding=mp3`, {
-    method: "POST",
-    headers: { Authorization: `Token ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
-  });
-
-  if (!dg.ok || !dg.body) {
-    const detail = await dg.text().catch(() => "");
-    return Response.json({ error: "TTS failed", status: dg.status, detail: detail.slice(0, 300) }, { status: 502 });
+  try {
+    const { stream, contentType } = await provider.tts(text);
+    return new Response(stream, {
+      headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=86400" },
+    });
+  } catch (e) {
+    return Response.json(
+      { error: "TTS failed", provider: provider.name, detail: String((e as Error).message).slice(0, 300) },
+      { status: 502 }
+    );
   }
-
-  return new Response(dg.body, {
-    headers: {
-      "Content-Type": "audio/mpeg",
-      "Cache-Control": "public, max-age=86400",
-    },
-  });
 }

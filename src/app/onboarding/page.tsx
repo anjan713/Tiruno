@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { GraduationCap, Briefcase, Check, Loader2, Sparkles } from "lucide-react";
 import { Mascot } from "@/components/mascot/Mascot";
 import { Button } from "@/components/ui/Button";
+import { Logo } from "@/components/brand/Logo";
 import { cn } from "@/lib/cn";
 import { useGameStore } from "@/lib/store/useGameStore";
 import { useMascot } from "@/components/mascot/MascotProvider";
@@ -86,7 +87,7 @@ export default function Onboarding() {
         style={{ backgroundImage: "url(/art/bg/bg_onboarding.webp)" }}
       />
       <div className="relative mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center px-6 py-12">
-        <div className="mb-2 font-display text-3xl font-extrabold text-primary">Tiruno</div>
+        <Logo size="lg" className="mb-2" />
 
         {step === "role" && (
           <div className="flex w-full flex-col items-center animate-rise">

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { X, Mic, Play, Pause, RotateCcw, Check, BookText, ArrowRight, Loader2, Square } from "lucide-react";
+import { X, Play, Pause, RotateCcw, Check, BookText, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
 import { Hearts } from "@/components/ui/Hearts";
@@ -10,21 +10,24 @@ import { Mascot } from "@/components/mascot/Mascot";
 import { useGameStore } from "@/lib/store/useGameStore";
 import { useMascot } from "@/components/mascot/MascotProvider";
 import { playSfx } from "@/lib/sound/sfx";
-import { ARTICLES } from "@/lib/mock/data";
+import { ARTICLES, type Article } from "@/lib/mock/data";
 import type { MascotState } from "@/lib/mascot/manifest";
 import { speak, stopSpeaking } from "@/lib/voice/voice";
-import { useBargeIn } from "@/lib/voice/useBargeIn";
+import { PodcastButton } from "@/components/notebook/PodcastButton";
+import { recordEngagement } from "@/lib/notebook";
+import { toReaderArticle } from "@/lib/learn/storedArticle";
+import type { StoredArticle } from "@/lib/articles";
 
-type Phase = "narrating" | "done" | "checkpoint" | "qa";
+type Phase = "narrating" | "done" | "checkpoint";
 
-function answerFor(t: string) {
-  const q = t.toLowerCase();
-  if (q.includes("vector") || q.includes("embedding"))
-    return "Vectors capture meaning, so we retrieve text that's relevant even when the wording differs — that's why semantic search beats keyword matching here.";
-  if (q.includes("hallucinat") || q.includes("trust") || q.includes("wrong"))
-    return "Grounding the model in retrieved sources keeps it honest — it answers from real material and cites it instead of guessing.";
-  return "Great question! Retrieval keeps the answer grounded in your sources, so Tiru teaches from real material and cites it — not guesses.";
-}
+const LOADING_ARTICLE: Article = {
+  id: "loading",
+  title: "Loading…",
+  source: "",
+  readingTime: "",
+  topic: "",
+  segments: [{ heading: "Loading", text: "Fetching your article…" }],
+};
 
 export function ArticlePlayer() {
   const router = useRouter();
@@ -32,14 +35,17 @@ export function ArticlePlayer() {
   const search = useSearchParams();
   const nodeId = search.get("node") ?? undefined;
 
-  const article = ARTICLES[params.id] ?? ARTICLES["a-llm-rag"];
+  const mock = ARTICLES[params.id];
+  const [article, setArticle] = useState<Article>(mock ?? LOADING_ARTICLE);
+  const [loading, setLoading] = useState(!mock);
   const segments = article.segments;
 
   const hearts = useGameStore((s) => s.hearts);
   const loseHeart = useGameStore((s) => s.loseHeart);
   const addXp = useGameStore((s) => s.addXp);
   const completeNode = useGameStore((s) => s.completeNode);
-  const keepStreak = useGameStore((s) => s.keepStreak);
+  const markArticleRead = useGameStore((s) => s.markArticleRead);
+  const recordTopicProgress = useGameStore((s) => s.recordTopicProgress);
   const { fire } = useMascot();
 
   const muted = useGameStore((s) => s.muted);
@@ -100,10 +106,32 @@ export function ArticlePlayer() {
     }
   }, [narrationText, muted, seg.checkpoint]);
 
-  // (Re)start narration whenever the segment changes
+  // Stored (user-added / daily) articles aren't in the mock set — fetch + adapt them.
+  useEffect(() => {
+    if (mock) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/articles");
+        const data = await res.json();
+        const found = (data.articles as StoredArticle[] | undefined)?.find((x) => x.id === params.id);
+        if (!cancelled) setArticle(found ? toReaderArticle(found) : ARTICLES["a-llm-rag"]);
+      } catch {
+        if (!cancelled) setArticle(ARTICLES["a-llm-rag"]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mock, params.id]);
+
+  // (Re)start narration when the segment changes (or once the stored article loads).
   useEffect(() => {
     setSelected(null);
     setChecked(false);
+    if (loading) return;
     startNarration();
     return () => {
       runId.current++;
@@ -111,7 +139,7 @@ export function ArticlePlayer() {
       stopSpeaking();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [segIndex]);
+  }, [segIndex, article.id, loading]);
 
   const togglePause = () => {
     const a = audioRef.current;
@@ -136,14 +164,20 @@ export function ArticlePlayer() {
     if (segIndex + 1 >= segments.length) {
       const xp = 15 + segments.length * 3;
       addXp(xp);
-      keepStreak();
       if (nodeId) completeNode(nodeId);
+      // Reading the whole article counts toward the "articles read" metric and refreshes
+      // the topic's skill score (currency + a moderate mastery gain).
+      markArticleRead(params.id);
+      recordTopicProgress(article.topic, 60);
+      // Finishing the article is a strong engagement signal → extends NotebookLM
+      // retention for the source (no-op for non-ingested/mock articles).
+      void recordEngagement(params.id, 90);
       fire("complete", { takeover: true, title: `Article complete! +${xp} XP`, duration: 2600 });
       setTimeout(() => router.push("/learn"), 1400);
       return;
     }
     setSegIndex((i) => i + 1);
-  }, [segIndex, segments.length, addXp, keepStreak, nodeId, completeNode, fire, router]);
+  }, [segIndex, segments.length, addXp, nodeId, completeNode, markArticleRead, recordTopicProgress, article.topic, fire, router, params.id]);
 
   const checkCheckpoint = () => {
     if (selected === null) return;
@@ -159,44 +193,13 @@ export function ArticlePlayer() {
     }
   };
 
-  // Hands-free barge-in: while Tiru narrates, the mic stays open. The moment the
-  // user starts talking, narration stops and the question is captured, answered,
-  // and spoken back — no button required.
-  const context = segments.map((s) => `${s.heading}. ${s.text}`).join("\n\n");
-  const {
-    stage: qaStage,
-    transcript,
-    answer,
-    supported: micSupported,
-    stopAndAsk,
-    dismiss,
-  } = useBargeIn({
-    enabled: phase === "narrating" || phase === "done",
-    muted,
-    buildAsk: (question) => ({ question, articleId: params.id, context, title: article.title }),
-    fallbackAnswer: answerFor,
-    onInterrupt: () => {
-      audioRef.current?.pause();
-      stopSpeaking();
-      runId.current++; // cancel narration callbacks
-      cancelAnimationFrame(raf.current);
-      setPaused(true);
-      setPhase("qa");
-      setDock("listening");
-      playSfx("level_chime");
-    },
-    onResume: () => {
-      if (narrProgress >= 1) {
-        setPhase(seg.checkpoint ? "checkpoint" : "done");
-        setDock("idle");
-      } else {
-        startNarration();
-      }
-    },
-  });
-
-  const qaDock: MascotState =
-    qaStage === "listening" ? "listening" : qaStage === "answered" ? "talking" : "thinking";
+  if (loading) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-bg">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-border border-t-primary" />
+      </div>
+    );
+  }
 
   const overall = (segIndex + narrProgress) / segments.length;
   const cp = seg.checkpoint;
@@ -222,7 +225,7 @@ export function ArticlePlayer() {
           <h1 className="mb-2 font-display text-h2 text-text">{article.title}</h1>
           <div className="card p-6">
             <h2 className="mb-3 font-display text-h3 text-text">{seg.heading}</h2>
-            <p className={cn("text-lg leading-relaxed text-text transition-opacity", phase === "qa" && "opacity-40")}>{seg.text}</p>
+            <p className="text-lg leading-relaxed text-text">{seg.text}</p>
             {/* narration caption progress */}
             <div className="mt-4 h-1.5 overflow-hidden rounded-chip bg-surface-alt">
               <div className="h-full rounded-chip bg-secondary" style={{ width: `${narrProgress * 100}%` }} />
@@ -237,48 +240,8 @@ export function ArticlePlayer() {
             <Button size="sm" variant="neutral" onClick={togglePause} disabled={phase !== "narrating" || !audioRef.current}>
               {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />} {paused ? "Resume" : "Pause"}
             </Button>
-            <span className="chip bg-surface-alt text-muted">
-              <Mic className={cn("h-3.5 w-3.5", micSupported ? "text-secondary" : "text-muted")} />
-              {micSupported ? "Just speak to ask Tiru — anytime" : "Enable your mic to ask Tiru"}
-            </span>
+            <PodcastButton articleId={params.id} />
           </div>
-
-          {/* Q&A panel — hands-free barge-in (VAD -> Deepgram STT -> grounded answer -> TTS) */}
-          {phase === "qa" && (
-            <div className="mt-4 card animate-rise border-2 border-secondary/40 p-5">
-              <div className="mb-3 flex items-center gap-2 text-secondary">
-                <Mic className={cn("h-4 w-4", qaStage === "listening" && "animate-pulse text-danger")} />
-                <span className="font-display text-sm font-bold">
-                  {qaStage === "listening"
-                    ? "Listening… just speak your question"
-                    : qaStage === "transcribing"
-                    ? "Transcribing…"
-                    : qaStage === "thinking"
-                    ? "Tiru is thinking…"
-                    : qaStage === "answered"
-                    ? "Tiru says"
-                    : "Ask Tiru"}
-                </span>
-              </div>
-              {transcript && <p className="mb-2 italic text-muted">“{transcript}”</p>}
-              {answer && <p className="text-text">{answer}</p>}
-              <div className="mt-4 flex justify-end gap-2">
-                {qaStage === "listening" ? (
-                  <Button size="sm" onClick={stopAndAsk}>
-                    <Square className="h-4 w-4" /> Stop &amp; ask
-                  </Button>
-                ) : qaStage === "transcribing" || qaStage === "thinking" ? (
-                  <Button size="sm" variant="neutral" disabled>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Working…
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="success" onClick={dismiss}>
-                    <ArrowRight className="h-4 w-4" /> Resume narration
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
 
           {/* Checkpoint */}
           {phase === "checkpoint" && cp && (
@@ -338,7 +301,7 @@ export function ArticlePlayer() {
         {/* Narrating mascot */}
         <div className="hidden md:block">
           <div className="sticky top-8 flex flex-col items-center">
-            <Mascot state={phase === "qa" ? qaDock : phase === "narrating" && !paused ? "talking" : dock} size={180} float bubble />
+            <Mascot state={phase === "narrating" && !paused ? "talking" : dock} size={180} float bubble />
           </div>
         </div>
       </div>

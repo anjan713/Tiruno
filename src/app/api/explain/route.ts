@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import Redis from "ioredis";
 import { ARTICLES } from "@/lib/mock/data";
-import { notebooklmSummarize, localSummarize } from "@/lib/notebooklm";
+import { summarize } from "@/lib/core/summarize";
 
 export const runtime = "nodejs";
 
@@ -67,7 +67,6 @@ export async function POST(req: NextRequest) {
 
   if (!text) return Response.json({ error: "No article text could be resolved" }, { status: 400 });
 
-  const nb = await notebooklmSummarize(text, title).catch(() => null);
-  const summary = nb ?? localSummarize(text, title);
-  return Response.json({ summary, via: nb ? "notebooklm" : "builtin", title: title ?? null });
+  const { summary, via } = await summarize({ text, title });
+  return Response.json({ summary, via, title: title ?? null });
 }

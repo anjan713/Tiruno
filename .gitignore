@@ -9,6 +9,7 @@
 
 # Prep material & assets — not for GitHub
 docs/
+design/
 idea.md
 mascot-generation/
 generated/
@@ -26,3 +27,18 @@ build/
 # Vendored external skill (cloned, not for our repo) + local agent config
 vendor/
 .claude/
+.windsurf/
+
+
+ARCHITECTURE-SOLID.md
+
+PROVIDERS.md
+# Runtime data (ingested materials, podcasts) — not for GitHub
+data/
+
+# Python worker artifacts
+__pycache__/
+*.pyc
+
+# TS incremental build artifact
+tsconfig.tsbuildinfo

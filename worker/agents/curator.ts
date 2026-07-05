@@ -1,10 +1,14 @@
 import type Redis from "ioredis";
 import { runSkillAgent } from "../lib/sdk";
 import { makeBus } from "../lib/bus";
+import { enqueue } from "../lib/enqueue";
 import { recordSignal } from "../loops/l1";
 import { proposeFollowups } from "../loops/l2";
 import { embedBatch } from "../../src/lib/rag/embeddings";
 import { ensureVectorIndex, indexMaterial } from "../../src/lib/rag/vector";
+import { getHermes } from "../../src/lib/core/hermes";
+import { notebookLMEnabled } from "../../src/lib/core/notebooklm";
+import type { RedisLike } from "../../src/lib/core/store/types";
 
 export interface ExploreSource {
   title: string;
@@ -36,8 +40,8 @@ export interface ExploreJob {
 
 const exploreKey = (uid: string, jobId: string) => `explore:${uid}:${jobId}`;
 
-const PROMPT = (topic: string) => `Use the **last30days** skill to research what people have actually said about "${topic}" over the last 30 days across Reddit, X, YouTube, Hacker News, GitHub, and the web — ranked by real engagement.
-
+const PROMPT = (topic: string, hint: string) => `Use the **last30days** skill to research what people have actually said about "${topic}" over the last 30 days across Reddit, X, YouTube, Hacker News, GitHub, and the web — ranked by real engagement.
+${hint ? `\n${hint}\n` : ""}
 When you are done, respond with ONLY a single JSON object (no prose, no markdown code fences) of exactly this shape:
 {"sources":[{"title":"...","url":"https://...","source":"reddit|hackernews|youtube|github|x|web","engagement":"e.g. 1.2k upvotes · 340 comments","snippet":"one short sentence on why it matters"}],"synthesis":"A grounded 4-6 sentence markdown summary of the current conversation, reflecting what the sources collectively show."}
 
@@ -102,8 +106,19 @@ export async function runExplore(redis: Redis, job: ExploreJob): Promise<Explore
   await save();
   await bus.publish(job.uid, { jobId: job.jobId, type: "progress", status: "researching", step: state.steps[0] });
 
+  // Hermes: consult the evolved discovery strategy + learned skills so each run
+  // benefits from what past runs learned (closing the self-improvement loop).
+  const hermes = getHermes(redis as unknown as RedisLike);
+  const strategy = await hermes.currentStrategy(job.uid);
+  const [strategyHint, skillsHint] = await Promise.all([
+    hermes.strategyHint(job.uid),
+    hermes.skillsHint(job.topic),
+  ]);
+  const hint = [strategyHint, skillsHint].filter(Boolean).join("\n");
+
   const res = await runSkillAgent({
-    prompt: PROMPT(job.topic),
+    prompt: PROMPT(job.topic, hint),
+    skills: ["last30days"],
     onStep: (step) => {
       if (!step || state.steps[state.steps.length - 1] === step) return;
       state.steps.push(step);
@@ -151,6 +166,25 @@ export async function runExplore(redis: Redis, job: ExploreJob): Promise<Explore
     console.warn("[curator] index sources failed:", (e as Error).message);
   }
 
+  // Acquire → ingest: feed the top discovered article URLs into NotebookLM so
+  // they become grounded sources (podcast + lessons). Gated by NotebookLM being
+  // enabled; opt out with NOTEBOOKLM_AUTO_INGEST=0. Dedup makes this idempotent.
+  if (notebookLMEnabled() && process.env.NOTEBOOKLM_AUTO_INGEST !== "0") {
+    const webSources = sources.filter((s) => /^https?:\/\//i.test(s.url)).slice(0, 5);
+    await Promise.all(
+      webSources.map((s, i) =>
+        enqueue(redis, "ingest_article", {
+          uid: job.uid,
+          jobId: `${job.jobId}-ing-${i}`,
+          url: s.url,
+          title: s.title,
+          topic: job.topic,
+          notebook: "articles",
+        }).catch((e) => console.warn("[curator] ingest enqueue failed:", (e as Error).message))
+      )
+    );
+  }
+
   // L1: record the research as an interest signal. L2: propose follow-up topics.
   await recordSignal(redis, job.uid, { kind: "explore", topic: job.topic });
   state.followups = await proposeFollowups(redis, job.uid, job.topic, sources, synthesis);
@@ -162,5 +196,23 @@ export async function runExplore(redis: Redis, job: ExploreJob): Promise<Explore
     status: "ready",
     result: { sources, synthesis, followups: state.followups },
   });
+
+  // Hermes: record this run as episodic memory, then reflect + evolve the
+  // strategy. Best-effort and after the user already has results.
+  try {
+    const platforms = new Set(sources.map((s) => s.source)).size;
+    await hermes.recordEpisode({
+      uid: job.uid,
+      task: "explore",
+      topic: job.topic,
+      strategyVersion: strategy.version,
+      input: `Research "${job.topic}" (explore ${(strategy.noveltyExplore * 100).toFixed(0)}%)`,
+      output: `${sources.length} sources across ${platforms} platforms; ${state.followups.length} follow-ups proposed`,
+      metrics: { sources: sources.length, platforms, followups: state.followups.length },
+    });
+    await hermes.reflectAndEvolve(job.uid);
+  } catch (e) {
+    console.warn("[curator] hermes reflect failed:", (e as Error).message);
+  }
   return state;
 }

@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Map, User, Newspaper, Bookmark, Compass, Moon, Sun, Volume2, VolumeX } from "lucide-react";
+import { Map, User, Newspaper, Bookmark, Compass, Moon, Sun, Volume2, VolumeX, Lock } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Logo } from "@/components/brand/Logo";
 import { useGameStore } from "@/lib/store/useGameStore";
+import { learnGate } from "@/lib/learn/gate";
 import { primeAudio } from "@/lib/sound/sfx";
 
 const LINKS = [
@@ -21,18 +23,21 @@ export function Nav() {
   const muted = useGameStore((s) => s.muted);
   const toggleTheme = useGameStore((s) => s.toggleTheme);
   const toggleMuted = useGameStore((s) => s.toggleMuted);
+  const name = useGameStore((s) => s.name);
+  const interestArticleIds = useGameStore((s) => s.interestArticleIds);
+  const interestKeywords = useGameStore((s) => s.interestKeywords);
+  const learnLocked = !learnGate({ name, interestArticleIds, interestKeywords }).unlocked;
 
   return (
     <nav className="hidden h-full w-[88px] shrink-0 flex-col gap-2 border-r border-border bg-surface px-3 py-5 md:flex lg:w-[240px]">
-      <Link href="/learn" className="mb-4 flex items-center gap-2 px-2" onClick={() => primeAudio()}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/mascot/poses/wave.webp" alt="Tiru" className="h-10 w-10 object-contain drag-none" />
-        <span className="hidden font-display text-2xl font-extrabold text-primary lg:inline">Tiruno</span>
+      <Link href="/learn" className="mb-4 flex items-center px-2" onClick={() => primeAudio()}>
+        <Logo wordmarkClassName="hidden lg:inline" />
       </Link>
 
       <div className="flex flex-1 flex-col gap-1.5">
         {LINKS.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href);
+          const locked = href === "/learn" && learnLocked;
           return (
             <Link
               key={href}
@@ -43,7 +48,12 @@ export function Nav() {
                 active ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface-alt hover:text-text"
               )}
             >
-              <Icon className={cn("h-6 w-6 shrink-0 transition-transform group-hover:scale-110", active && "text-primary")} />
+              <span className="relative shrink-0">
+                <Icon className={cn("h-6 w-6 transition-transform group-hover:scale-110", active && "text-primary")} />
+                {locked && (
+                  <Lock className="absolute -right-1.5 -top-1.5 h-3.5 w-3.5 rounded-full bg-surface p-0.5 text-muted" />
+                )}
+              </span>
               <span className="hidden lg:inline">{label}</span>
             </Link>
           );

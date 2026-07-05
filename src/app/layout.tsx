@@ -20,6 +20,10 @@ const nunito = Nunito({
 export const metadata: Metadata = {
   title: "Tiruno — Learn with Tiru",
   description: "A playful, mascot-led learning app. Streaks, hearts, and Tiru the bear.",
+  icons: {
+    icon: [{ url: "/mascot/poses/happy.png", type: "image/png" }],
+    apple: "/mascot/poses/happy.png",
+  },
 };
 
 export const viewport: Viewport = {

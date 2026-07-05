@@ -2,14 +2,16 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Flame, Zap, Target, CheckCircle2, RotateCcw } from "lucide-react";
+import { Flame, Zap, Newspaper, CheckCircle2, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/Button";
 import { Hearts } from "@/components/ui/Hearts";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import { useGameStore, xpForLevel } from "@/lib/store/useGameStore";
 import { useMascot } from "@/components/mascot/MascotProvider";
-import { skillScore } from "@/lib/mock/data";
+import { IntegrationsPanel } from "@/components/notebook/IntegrationsPanel";
+import { ProfileSetup } from "@/components/profile/ProfileSetup";
+import { skillScore } from "@/lib/learn/skill";
 
 const BADGES = [
   { id: "first", img: "/art/badges/badge_first.webp", label: "First Lesson" },
@@ -20,7 +22,7 @@ const BADGES = [
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { xp, level, streak, hearts, maxHearts, completedNodes, persona, name, topicScores, resetOnboarding } = useGameStore();
+  const { xp, level, streak, hearts, maxHearts, completedNodes, persona, name, topicScores, articlesReadIds, resetOnboarding } = useGameStore();
   const { setAmbient } = useMascot();
 
   useEffect(() => setAmbient("idle"), [setAmbient]);
@@ -48,11 +50,14 @@ export default function ProfilePage() {
         </div>
       </header>
 
+      {/* Setup: name, keywords, article links — gates the Learn section */}
+      <ProfileSetup />
+
       {/* Stat cards */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat icon={<Zap className="h-5 w-5 text-amber" />} value={xp} label="Total XP" index={0} />
         <Stat icon={<Flame className="h-5 w-5 text-amber" />} value={streak} label="Day streak" index={1} />
-        <Stat icon={<Target className="h-5 w-5 text-secondary" />} value="84%" label="Accuracy" index={2} />
+        <Stat icon={<Newspaper className="h-5 w-5 text-secondary" />} value={articlesReadIds.length} label="Articles read" index={2} />
         <Stat icon={<CheckCircle2 className="h-5 w-5 text-success" />} value={completedNodes.length} label="Units done" index={3} />
       </div>
 
@@ -116,6 +121,9 @@ export default function ProfilePage() {
           ))}
         </div>
       </div>
+
+      {/* Integration availability — full vs degraded/mock mode + Hermes skills (30d) */}
+      <IntegrationsPanel />
 
       <Button variant="ghost" onClick={() => { resetOnboarding(); router.push("/onboarding"); }}>
         <RotateCcw className="h-4 w-4" /> Restart onboarding

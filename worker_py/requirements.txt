@@ -1,0 +1,12 @@
+# Tiruno Python worker — runtime dependencies.
+#
+# Mirrors the Node worker. Talks to the SAME Redis (queue + state + pub/sub +
+# RediSearch vector index), so it is a drop-in replacement for `npm run worker`.
+
+redis>=5.0.0          # streams (XREADGROUP/XACK), pub/sub, RediSearch via execute_command
+httpx>=0.27.0         # async HTTP for LLM + embedding providers
+python-dotenv>=1.0.0  # load .env.local / .env from the repo root
+
+# Optional: enables the Claude Agent SDK runner (skills like `last30days`).
+# Without it, the worker falls back to the plain LLM runner automatically.
+claude-agent-sdk>=0.1.0 ; python_version >= "3.10"
